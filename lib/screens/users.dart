@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'chart.dart';
 
 class UsersScreen extends StatelessWidget {
   const UsersScreen({super.key});
@@ -10,7 +9,7 @@ class UsersScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text("Users"),
       centerTitle: true,
-        backgroundColor: Colors.grey[600],
+        backgroundColor: Colors.lightBlue[400],
       ),
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance.collection("users").snapshots(),
@@ -27,16 +26,13 @@ class UsersScreen extends StatelessWidget {
           return ListView(
             children: snapshot.data!.docs.map((doc) {
               final data = doc.data() as Map<String, dynamic>;
+              final rawUsername = data["username"]?.toString();
+              final displayName = (rawUsername != null && rawUsername.isNotEmpty)
+                  ? rawUsername.replaceAll('_', '')
+                  : (data["name"] ?? data["email"] ?? "No Name");
               return ListTile(
-                title: Text(data["email"] ?? "No Email"),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => ChatScreen(userId: data["uid"] ?? ""),
-                    ),
-                  );
-                },
+                title: Text(displayName),
+                subtitle: Text(data["email"] ?? ""),
               );
             }).toList(),
           );

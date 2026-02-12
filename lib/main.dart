@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'screens/login.dart';
+import 'screens/chart.dart';
+import 'services/auth_service.dart';
 import 'firebase_options.dart';
 
 void main() async {
@@ -16,9 +18,10 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final auth = AuthService();
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: LoginScreen(),
+      home: auth.currentUser != null ? const ChatScreen() : LoginScreen(),
     );
   }
 }

@@ -49,11 +49,6 @@ class AuthService {
           errorMessage = 'Too many failed attempts. Please try again later.';
           break;
 
-      // Reset password errors
-        case 'user-not-found':
-          errorMessage = 'No user found with this email address.';
-          break;
-
       // Network errors
         case 'network-request-failed':
           errorMessage = 'Network error. Please check your internet connection.';

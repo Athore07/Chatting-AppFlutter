@@ -22,8 +22,6 @@
 |-------------|-------------|-------------|
 | 🔐 Secure Login | 👥 View Users | 💬 Real-time Chat |
 
-*(Add screenshots here after uploading images to your repo)*
-
 ---
 
 ## 🛠️ Built With
@@ -37,5 +35,24 @@
 
 ---
 
-## 🏗️ Project Architecture
+## 👨‍👩‍👧‍👦 Project participants
 
+| #  | 👤 First Name | 🧾 Last Name        |
+|----|--------------|--------------------|
+| 1  | Antony       | Nestory            |
+| 2  | Godfrey      | Mahega             |
+| 3  | Rajabu       | Mohamedi           |
+| 4  | Pascal       | Mboya              |
+| 5  | Said         | Athuman            |
+| 6  | Bahati       | Msafiri            |
+| 7  | Barikieli    | Manase             |
+| 8  | Waziri       | Fadhili            |
+| 9  | Lubigisa     | William            |
+| 10 | Joseph       | Evarist            |
+| 11 | Baraka       | Nindwa             |
+| 12 | Oshipay      | Loy                |
+| 13 | Nehemia      | Mwajombe           |
+| 14 | Isack M.     | Sebastian          |
+| 15 | Joyce        | Msinga             |
+| 16 | Jueria       | Makweta            |
+|

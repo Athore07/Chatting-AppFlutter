@@ -1,30 +1,276 @@
+import 'package:chatting_app/screens/profile.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
 import 'chart.dart';
+import 'login.dart';
 
-class UsersScreen extends StatelessWidget {
+class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
 
   @override
+  State<UsersScreen> createState() => _UsersScreenState();
+}
+
+class _UsersScreenState extends State<UsersScreen> {
+
+  final currentUser = FirebaseAuth.instance.currentUser;
+  final searchController = TextEditingController();
+  String searchQuery = '';
+  bool isSearching = false;
+
+  @override
+
+  void dispose() {
+    searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _logout() async {
+    try {
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      await FirebaseAuth.instance.signOut();
+
+      if (!mounted) return;
+
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // Remove loading dialog
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Logout failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  void _showLogoutDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+          shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => _logout(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+  }
+
+  Future<void> showProfileMenu(BuildContext context, String userId) async {
+    showModalBottomSheet( context: context,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (context) => Container(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+              Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Colors.blue[50],
+                child: Icon(Icons.person, color: Colors.blue[700]),
+              ),
+              title: const Text('View Profile'),
+              subtitle: const Text('See your profile information'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ProfileScreen(
+                      userId: userId,
+                    ),
+                  ),
+                );
+              },
+            ),
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Colors.orange[50],
+                child: Icon(Icons.settings, color: Colors.orange[700]),
+              ),
+              title: const Text('Settings'),
+              subtitle: const Text('App preferences and settings'),
+              onTap: () {
+                Navigator.pop(context);
+                // Navigate to settings screen
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Settings coming soon!')),
+                );
+              },
+            ),
+            const Divider(),
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: Colors.red[50],
+                child: Icon(Icons.logout, color: Colors.red[700]),
+              ),
+              title: const Text('Logout'),
+              subtitle: const Text('Sign out from your account'),
+              onTap: () {
+                Navigator.pop(context);
+                _showLogoutDialog();
+              },
+            ),
+          ],
+        ),
+    ),
+    );
+
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final currentUser = FirebaseAuth.instance.currentUser;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          "Chat App",
+        title: isSearching
+            ? TextField(
+          controller: searchController,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText: 'Search users by name or email...',
+            hintStyle: TextStyle(color: Colors.grey[400]),
+            border: InputBorder.none,
+          ),
+          style: const TextStyle(color: Colors.black87, fontSize: 16),
+          onChanged: (value) {
+            setState(() {
+              searchQuery = value.toLowerCase();
+            });
+          },
+        )
+            : const Text(
+          "Chat Users",
           style: TextStyle(
             fontWeight: FontWeight.w600,
             color: Colors.black87,
           ),
         ),
-        centerTitle: true,
-        backgroundColor: Colors.grey[300],
+        backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black87),
+        leading: isSearching
+            ? IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            setState(() {
+              isSearching = false;
+              searchQuery = '';
+              searchController.clear();
+            });
+          },
+        )
+            : null,
+        actions: [
+          // Search Icon
+          if (!isSearching)
+            IconButton(
+              icon: const Icon(Icons.search),
+              onPressed: () {
+                setState(() {
+                  isSearching = true;
+                });
+              },
+            ),
 
+          // Settings/Profile Icon
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.settings),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            onSelected: (value) {
+              if (value == 'profile') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ProfileScreen(
+                      userId: currentUser?.uid ?? '',
+                    ),
+                  ),
+                );
+              } else if (value == 'settings') {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Settings coming soon!')),
+                );
+              } else if (value == 'logout') {
+                _showLogoutDialog();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'profile',
+                child: Row(
+                  children: [
+                    Icon(Icons.person, color: Colors.blue),
+                    SizedBox(width: 8),
+                    Text('Profile'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'settings',
+                child: Row(
+                  children: [
+                    Icon(Icons.settings, color: Colors.orange),
+                    SizedBox(width: 8),
+                    Text('Settings'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'logout',
+                child: Row(
+                  children: [
+                    Icon(Icons.logout, color: Colors.red),
+                    SizedBox(width: 8),
+                    Text('Logout'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       body: Container(
         color: Colors.grey[50],
@@ -109,9 +355,48 @@ class UsersScreen extends StatelessWidget {
               );
             }
 
-            // Users list
-            final users = snapshot.data!.docs;
+            // Filter users based on search query
+            var users = snapshot.data!.docs;
+            if (searchQuery.isNotEmpty) {
+              users = users.where((doc) {
+                final data = doc.data() as Map<String, dynamic>;
+                final email = (data['email'] ?? '').toString().toLowerCase();
+                final name = (data['name'] ?? '').toString().toLowerCase();
+                return email.contains(searchQuery) || name.contains(searchQuery);
+              }).toList();
+            }
 
+            if (users.isEmpty) {
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.search_off,
+                      size: 64,
+                      color: Colors.grey[400],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      "No users found",
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      "Try a different search term",
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey[500],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
             return ListView.separated(
               padding: const EdgeInsets.all(16),
               itemCount: users.length,

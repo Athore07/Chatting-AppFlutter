@@ -191,9 +191,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
         ),
         const SizedBox(height: 16),
         Text(
-          "Join Us Today!",
+          "Join Chatting World Today!",
           style: TextStyle(
-            fontSize: 28,
+            fontSize: 25,
             fontWeight: FontWeight.bold,
             color: Colors.grey[800],
           ),
@@ -217,8 +217,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       textCapitalization: TextCapitalization.words,
       style: const TextStyle(fontSize: 16),
       decoration: InputDecoration(
-        labelText: "Full Name",
-        hintText: "Enter your full name",
+        labelText: "Name",
+        hintText: "Enter your name",
         prefixIcon: Icon(Icons.person_outline, color: Colors.blue[700]),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),

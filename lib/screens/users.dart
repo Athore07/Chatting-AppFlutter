@@ -24,6 +24,7 @@ class UsersScreen extends StatelessWidget {
         backgroundColor: Colors.grey[300],
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black87),
+
       ),
       body: Container(
         color: Colors.grey[50],

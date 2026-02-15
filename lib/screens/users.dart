@@ -278,7 +278,6 @@ class _UsersScreenState extends State<UsersScreen> {
         child: StreamBuilder<QuerySnapshot>(
           stream: FirebaseFirestore.instance
               .collection("users")
-              .orderBy("email")
               .snapshots(),
           builder: (context, snapshot) {
             // Loading state
@@ -356,72 +355,100 @@ class _UsersScreenState extends State<UsersScreen> {
               );
             }
 
-            // Filter users based on search query
-            var users = snapshot.data!.docs;
-            if (searchQuery.isNotEmpty) {
-              users = users.where((doc) {
-                final data = doc.data() as Map<String, dynamic>;
-                final email = (data['email'] ?? '').toString().toLowerCase();
-                final name = (data['name'] ?? '').toString().toLowerCase();
-                return email.contains(searchQuery) || name.contains(searchQuery);
-              }).toList();
-            }
+            // Get all users
+            var allUsers = snapshot.data!.docs;
 
-            if (users.isEmpty) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.search_off,
-                      size: 64,
-                      color: Colors.grey[400],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      "No users found",
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.grey[600],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      "Try a different search term",
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey[500],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }
-            return ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: users.length,
-              separatorBuilder: (context, index) => const Divider(
-                height: 1,
-                indent: 80,
-              ),
-              itemBuilder: (context, index) {
-                final userData = users[index].data() as Map<String, dynamic>;
-                final userId = userData["uid"] ?? '';
-                final userEmail = userData["email"] ?? 'No email';
-                final userName = userData["name"] ?? _formatEmail(userEmail);
-
-                // Skip current user
-                if (userId == currentUser?.uid) {
-                  return const SizedBox.shrink();
+            return FutureBuilder<Map<String, Timestamp>>(
+              future: _getRecentChatTimestamps(currentUser?.uid ?? ''),
+              builder: (context, recentSnapshot) {
+                if (recentSnapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(
+                    child: CircularProgressIndicator(color: Colors.blue),
+                  );
                 }
 
-                return _buildUserTile(
-                  context: context,
-                  userId: userId,
-                  userName: userName,
-                  userEmail: userEmail,
-                  currentUserId: currentUser?.uid ?? '',
+                final recentChats = recentSnapshot.data ?? {};
+
+                // Sort users: recent chats first (by timestamp), then others by name
+                allUsers.sort((a, b) {
+                  final aData = a.data() as Map<String, dynamic>;
+                  final bData = b.data() as Map<String, dynamic>;
+                  final aId = aData['uid'] ?? '';
+                  final bId = bData['uid'] ?? '';
+                  final aName = aData['name'] ?? '';
+                  final bName = bData['name'] ?? '';
+
+                  // Skip current user
+                  if (aId == currentUser?.uid && bId != currentUser?.uid) return 1;
+                  if (bId == currentUser?.uid && aId != currentUser?.uid) return -1;
+                  if (aId == currentUser?.uid && bId == currentUser?.uid) return 0;
+
+                  final aHasRecent = recentChats.containsKey(aId);
+                  final bHasRecent = recentChats.containsKey(bId);
+
+                  // Recent chats first
+                  if (aHasRecent && !bHasRecent) return -1;
+                  if (!aHasRecent && bHasRecent) return 1;
+
+                  // Both have recent chats: sort by timestamp descending
+                  if (aHasRecent && bHasRecent) {
+                    return (recentChats[bId]?.compareTo(recentChats[aId] ?? Timestamp.now()) ?? 0);
+                  }
+
+                  // Neither has recent chats: sort by name
+                  return aName.compareTo(bName);
+                });
+
+                if (allUsers.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.people_outline,
+                          size: 64,
+                          color: Colors.grey[400],
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          "No users found",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: allUsers.length,
+                  separatorBuilder: (context, index) => const Divider(
+                    height: 1,
+                    indent: 80,
+                  ),
+                  itemBuilder: (context, index) {
+                    final userData = allUsers[index].data() as Map<String, dynamic>;
+                    final userId = userData["uid"] ?? '';
+                    final userEmail = userData["email"] ?? 'No email';
+                    final userName = userData["name"] ?? _formatEmail(userEmail);
+
+                    // Skip current user
+                    if (userId == currentUser?.uid) {
+                      return const SizedBox.shrink();
+                    }
+
+                    return _buildUserTile(
+                      context: context,
+                      userId: userId,
+                      userName: userName,
+                      userEmail: userEmail,
+                      currentUserId: currentUser?.uid ?? '',
+                    );
+                  },
                 );
               },
             );
@@ -607,6 +634,30 @@ class _UsersScreenState extends State<UsersScreen> {
     } catch (e) {
       print('Error fetching last message: $e');
       return null;
+    }
+  }
+
+  Future<Map<String, Timestamp>> _getRecentChatTimestamps(String userId) async {
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('recent_chats')
+          .get();
+
+      Map<String, Timestamp> recentChats = {};
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final withUserId = data['withUserId'] ?? '';
+        final timestamp = data['timestamp'] as Timestamp?;
+        if (withUserId.isNotEmpty && timestamp != null) {
+          recentChats[withUserId] = timestamp;
+        }
+      }
+      return recentChats;
+    } catch (e) {
+      print('Error fetching recent chat timestamps: $e');
+      return {};
     }
   }
 }

@@ -409,6 +409,7 @@ class _UsersScreenState extends State<UsersScreen> {
                 final userData = users[index].data() as Map<String, dynamic>;
                 final userId = userData["uid"] ?? '';
                 final userEmail = userData["email"] ?? 'No email';
+                final userName = userData["name"] ?? _formatEmail(userEmail);
 
                 // Skip current user
                 if (userId == currentUser?.uid) {
@@ -418,6 +419,7 @@ class _UsersScreenState extends State<UsersScreen> {
                 return _buildUserTile(
                   context: context,
                   userId: userId,
+                  userName: userName,
                   userEmail: userEmail,
                   currentUserId: currentUser?.uid ?? '',
                 );
@@ -432,6 +434,7 @@ class _UsersScreenState extends State<UsersScreen> {
   Widget _buildUserTile({
     required BuildContext context,
     required String userId,
+    required String userName,
     required String userEmail,
     required String currentUserId,
   }) {
@@ -479,35 +482,40 @@ class _UsersScreenState extends State<UsersScreen> {
           ],
         ),
         title: Text(
-          _formatEmail(userEmail),
+          userName,
           style: const TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 16,
             color: Colors.black87,
           ),
         ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Row(
-            children: [
-              Icon(
-                Icons.email_outlined,
-                size: 14,
-                color: Colors.grey[500],
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  userEmail,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey[600],
-                  ),
-                  overflow: TextOverflow.ellipsis,
+        subtitle: FutureBuilder<Map<String, dynamic>?>(
+          future: _getLastMessage(currentUserId, userId),
+          builder: (context, snapshot) {
+            String lastMessageText = 'No messages';
+            if (snapshot.connectionState == ConnectionState.done &&
+                snapshot.hasData &&
+                snapshot.data != null) {
+              final messageData = snapshot.data!;
+              final senderId = messageData['senderId'] ?? '';
+              final message = messageData['message'] ?? '';
+              final isYourMessage = senderId == currentUserId;
+              lastMessageText = isYourMessage
+                  ? 'You: $message'
+                  : message;
+            }
+            return Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                lastMessageText,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey[600],
                 ),
+                overflow: TextOverflow.ellipsis,
               ),
-            ],
-          ),
+            );
+          },
         ),
         trailing: Container(
           padding: const EdgeInsets.symmetric(
@@ -568,5 +576,37 @@ class _UsersScreenState extends State<UsersScreen> {
       return email.substring(0, atIndex);
     }
     return email;
+  }
+
+  Future<Map<String, dynamic>?> _getLastMessage(
+      String currentUserId, String otherUserId) async {
+    try {
+      // Create chat ID (same logic as in ChatScreen)
+      final chatId = currentUserId.compareTo(otherUserId) < 0
+          ? '$currentUserId-$otherUserId'
+          : '$otherUserId-$currentUserId';
+
+      // Get the last message from the chat
+      final snapshot = await FirebaseFirestore.instance
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .orderBy('timestamp', descending: true)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        return null;
+      }
+
+      final messageDoc = snapshot.docs.first.data();
+      return {
+        'message': messageDoc['text'] ?? '',
+        'senderId': messageDoc['senderId'] ?? '',
+      };
+    } catch (e) {
+      print('Error fetching last message: $e');
+      return null;
+    }
   }
 }

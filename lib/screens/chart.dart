@@ -1,7 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import '../services/auth_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final String receiverId;
@@ -20,8 +19,6 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final AuthService _authService = AuthService();
-
   User? get _currentUser => FirebaseAuth.instance.currentUser;
 
   String get _chatId {

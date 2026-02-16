@@ -1,6 +1,7 @@
 import 'package:chatting_app/screens/register.dart';
 import 'package:chatting_app/screens/users.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -50,8 +51,29 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
   }
 
   Future<void> _loadSavedEmail() async {
-    // TODO: Implement shared_preferences to load saved email
-    // This is a placeholder
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedEmail = prefs.getString('saved_email');
+      if (savedEmail != null && mounted) {
+        _emailController.text = savedEmail;
+      }
+    } catch (e) {
+      // Handle error silently
+      debugPrint('Error loading saved email: $e');
+    }
+  }
+
+  Future<void> _saveEmail(String email) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (_rememberMe) {
+        await prefs.setString('saved_email', email);
+      } else {
+        await prefs.remove('saved_email');
+      }
+    } catch (e) {
+      debugPrint('Error saving email: $e');
+    }
   }
 
   @override
@@ -71,6 +93,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     try {
       final email = _emailController.text.trim();
       final password = _passwordController.text.trim();
+
+      // Save email if remember me is checked
+      await _saveEmail(email);
 
       await _authService.login(
         email: email,
@@ -214,10 +239,6 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
 
                   // Register Link
                   _buildRegisterLink(),
-                  const SizedBox(height: 30),
-
-                  // Demo Credentials
-                  _buildDemoCredentials(),
                 ],
               ),
             ),
@@ -299,7 +320,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       style: const TextStyle(fontSize: 16),
       decoration: InputDecoration(
         labelText: "Email Address",
-        hintText: "Enter your email",
+        hintText: "Magu@example.com",
         prefixIcon: Icon(Icons.email_outlined, color: Colors.blue[700]),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
@@ -348,7 +369,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       style: const TextStyle(fontSize: 16),
       decoration: InputDecoration(
         labelText: "Password",
-        hintText: "Enter your password",
+        hintText: "Magu@123",
         prefixIcon: Icon(Icons.lock_outline, color: Colors.blue[700]),
         suffixIcon: IconButton(
           icon: Icon(
@@ -529,42 +550,4 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
     );
   }
 
-  Widget _buildDemoCredentials() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.info_outline, size: 16, color: Colors.grey[600]),
-              const SizedBox(width: 8),
-              Text(
-                "Demo Credentials",
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey[700],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "Email: demo@example.com\nPassword: demo123",
-            style: TextStyle(
-              fontSize: 11,
-              color: Colors.grey[600],
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
 }

@@ -61,6 +61,7 @@ class _ChatScreenState extends State<ChatScreen> {
       await _updateRecentChats(widget.receiverId);
 
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to send message: $e')),
       );

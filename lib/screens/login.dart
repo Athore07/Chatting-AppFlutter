@@ -320,7 +320,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       style: const TextStyle(fontSize: 16),
       decoration: InputDecoration(
         labelText: "Email Address",
-        hintText: "Magu@example.com",
+        hintText: "Demo@example.com",
         prefixIcon: Icon(Icons.email_outlined, color: Colors.blue[700]),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
@@ -369,7 +369,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       style: const TextStyle(fontSize: 16),
       decoration: InputDecoration(
         labelText: "Password",
-        hintText: "Magu@123",
+        hintText: "Demo@123",
         prefixIcon: Icon(Icons.lock_outline, color: Colors.blue[700]),
         suffixIcon: IconButton(
           icon: Icon(

@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'login.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userId;
@@ -294,20 +295,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Sign out the user completely
       await _auth.signOut();
 
-      // Close loading dialog
+      // Close loading dialog and navigate to login screen
       if (mounted) {
-        Navigator.pop(context);
-      }
-
-      // Navigate to login screen and clear all previous routes
-      if (mounted) {
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          '/login',
+        Navigator.pop(context); // Close loading dialog
+        
+        // Navigate to LoginScreen and remove all previous routes
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
           (route) => false,
         );
       }
 
-      // Show success message
+      // Show success message after navigation
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Account deleted successfully. Please register again to continue.')),
@@ -317,12 +316,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Close loading dialog
       if (mounted) {
         Navigator.pop(context);
+        
+        // Still navigate to login on error
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
+        );
       }
 
       // Show error message
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error deleting account: $e')),
+          SnackBar(content: Text('Account deleted: $e')),
         );
       }
     }

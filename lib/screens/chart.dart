@@ -1,15 +1,18 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async'; // Add this for StreamSubscription
 
 class ChatScreen extends StatefulWidget {
   final String receiverId;
   final String receiverName;
+  final String senderId;
 
   const ChatScreen({
     super.key,
     required this.receiverId,
-    required this.receiverName, required String senderId,
+    required this.receiverName,
+    required this.senderId,
   });
 
   @override
@@ -21,6 +24,10 @@ class _ChatScreenState extends State<ChatScreen> {
   final ScrollController _scrollController = ScrollController();
   User? get _currentUser => FirebaseAuth.instance.currentUser;
 
+  // Track receiver's online status
+  bool _isReceiverOnline = false;
+  StreamSubscription? _receiverStatusSubscription;
+
   String get _chatId {
     final uid1 = _currentUser!.uid;
     final uid2 = widget.receiverId;
@@ -28,10 +35,78 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   @override
+  void initState() {
+    super.initState();
+    _listenToReceiverStatus();
+    _markMessagesAsDelivered();
+  }
+
+  @override
   void dispose() {
+    _receiverStatusSubscription?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _listenToReceiverStatus() {
+    _receiverStatusSubscription = FirebaseFirestore.instance
+        .collection('users')
+        .doc(widget.receiverId)
+        .snapshots()
+        .listen((snapshot) {
+      if (mounted) {
+        setState(() {
+          _isReceiverOnline = snapshot.data()?['isOnline'] ?? false;
+        });
+
+        // If receiver comes online, mark messages as delivered
+        if (_isReceiverOnline) {
+          _markMessagesAsDelivered();
+        }
+      }
+    });
+  }
+
+  Future<void> _markMessagesAsDelivered() async {
+    try {
+      final messages = await FirebaseFirestore.instance
+          .collection('chats')
+          .doc(_chatId)
+          .collection('messages')
+          .where('receiverId', isEqualTo: _currentUser?.uid)
+          .where('isDelivered', isEqualTo: false)
+          .get();
+
+      for (var doc in messages.docs) {
+        await doc.reference.update({
+          'isDelivered': true,
+        });
+      }
+    } catch (e) {
+      debugPrint('Error marking messages as delivered: $e');
+    }
+  }
+
+  Future<void> _markMessagesAsRead() async {
+    try {
+      final messages = await FirebaseFirestore.instance
+          .collection('chats')
+          .doc(_chatId)
+          .collection('messages')
+          .where('receiverId', isEqualTo: _currentUser?.uid)
+          .where('isRead', isEqualTo: false)
+          .get();
+
+      for (var doc in messages.docs) {
+        await doc.reference.update({
+          'isRead': true,
+          'isDelivered': true, // Also mark as delivered if read
+        });
+      }
+    } catch (e) {
+      debugPrint('Error marking messages as read: $e');
+    }
   }
 
   Future<void> _sendMessage() async {
@@ -42,7 +117,8 @@ class _ChatScreenState extends State<ChatScreen> {
     if (currentUser == null) return;
 
     try {
-      await FirebaseFirestore.instance
+      // Add message with delivery status
+      final messageRef = await FirebaseFirestore.instance
           .collection('chats')
           .doc(_chatId)
           .collection('messages')
@@ -52,13 +128,23 @@ class _ChatScreenState extends State<ChatScreen> {
         'receiverId': widget.receiverId,
         'text': text,
         'timestamp': FieldValue.serverTimestamp(),
+        'isDelivered': false, // Initial status: not delivered
+        'isRead': false, // Initial status: not read
       });
 
       _messageController.clear();
 
       // Update recent chats for both users
-      await _updateRecentChats(currentUser.uid);
-      await _updateRecentChats(widget.receiverId);
+      await _updateRecentChats(currentUser.uid, text);
+      await _updateRecentChats(widget.receiverId, text);
+
+      // If receiver is online, mark as delivered immediately
+      if (_isReceiverOnline) {
+        await messageRef.update({'isDelivered': true});
+      }
+
+      // Scroll to bottom after sending
+      _scrollToBottom();
 
     } catch (e) {
       if (!mounted) return;
@@ -68,7 +154,19 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  Future<void> _updateRecentChats(String userId) async {
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          0,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
+
+  Future<void> _updateRecentChats(String userId, String lastMessage) async {
     final recentChatRef = FirebaseFirestore.instance
         .collection('users')
         .doc(userId)
@@ -77,11 +175,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
     await recentChatRef.set({
       'chatId': _chatId,
-      'lastMessage': _messageController.text,
+      'lastMessage': lastMessage,
       'timestamp': FieldValue.serverTimestamp(),
       'withUserId': userId == _currentUser?.uid
           ? widget.receiverId
           : _currentUser?.uid,
+      'withUserName': userId == _currentUser?.uid
+          ? widget.receiverName
+          : _currentUser?.displayName ?? 'User',
     });
   }
 
@@ -100,14 +201,31 @@ class _ChatScreenState extends State<ChatScreen> {
       automaticallyImplyLeading: true,
       title: Row(
         children: [
-          const CircleAvatar(
-            radius: 18,
-            backgroundColor: Colors.white,
-            child: Icon(
-              Icons.person,
-              color: Colors.blue,
-              size: 20,
-            ),
+          Stack(
+            children: [
+              const CircleAvatar(
+                radius: 18,
+                backgroundColor: Colors.white,
+                child: Icon(
+                  Icons.person,
+                  color: Colors.blue,
+                  size: 20,
+                ),
+              ),
+              Positioned(
+                bottom: 0,
+                right: 0,
+                child: Container(
+                  width: 10,
+                  height: 10,
+                  decoration: BoxDecoration(
+                    color: _isReceiverOnline ? Colors.green : Colors.grey,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -121,11 +239,11 @@ class _ChatScreenState extends State<ChatScreen> {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-                const Text(
-                  'Online',
+                Text(
+                  _isReceiverOnline ? 'Online' : 'Offline',
                   style: TextStyle(
                     fontSize: 12,
-                    color: Colors.green,
+                    color: _isReceiverOnline ? Colors.green : Colors.grey,
                   ),
                 ),
               ],
@@ -137,13 +255,16 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildBody() {
-    return Column(
-      children: [
-        Expanded(
-          child: _buildMessagesStream(),
-        ),
-        _buildMessageInput(),
-      ],
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(),
+      child: Column(
+        children: [
+          Expanded(
+            child: _buildMessagesStream(),
+          ),
+          _buildMessageInput(),
+        ],
+      ),
     );
   }
 
@@ -169,6 +290,11 @@ class _ChatScreenState extends State<ChatScreen> {
         }
 
         final messages = snapshot.data!.docs;
+
+        // Mark messages as read when viewing them
+        if (messages.isNotEmpty) {
+          _markMessagesAsRead();
+        }
 
         if (messages.isEmpty) {
           return _buildEmptyChat();
@@ -232,6 +358,10 @@ class _ChatScreenState extends State<ChatScreen> {
         ? _formatTime(timestamp.toDate())
         : '';
 
+    // Get message status
+    final isDelivered = message['isDelivered'] ?? false;
+    final isRead = message['isRead'] ?? false;
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Align(
@@ -277,14 +407,23 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  timeString,
-                  style: TextStyle(
-                    color: isMe
-                        ? Colors.white.withOpacity(0.7)
-                        : Colors.grey[600],
-                    fontSize: 10,
-                  ),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      timeString,
+                      style: TextStyle(
+                        color: isMe
+                            ? Colors.white.withOpacity(0.7)
+                            : Colors.grey[600],
+                        fontSize: 10,
+                      ),
+                    ),
+                    if (isMe) ...[
+                      const SizedBox(width: 4),
+                      _buildMessageStatusIcon(isDelivered, isRead),
+                    ],
+                  ],
                 ),
               ],
             ),
@@ -292,6 +431,46 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildMessageStatusIcon(bool isDelivered, bool isRead) {
+    if (isRead) {
+      // Double blue tick - message read
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.done_all,
+            size: 14,
+            color: Colors.blue[200],
+          ),
+        ],
+      );
+    } else if (isDelivered) {
+      // Double grey tick - message delivered
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.done_all,
+            size: 14,
+            color: Colors.white.withOpacity(0.7),
+          ),
+        ],
+      );
+    } else {
+      // Single grey tick - message sent
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.done,
+            size: 14,
+            color: Colors.white.withOpacity(0.7),
+          ),
+        ],
+      );
+    }
   }
 
   Widget _buildMessageInput() {

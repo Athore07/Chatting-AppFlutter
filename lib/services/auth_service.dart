@@ -1,5 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -230,7 +232,7 @@ class AuthService {
       });
     } catch (e) {
       // Log error but don't throw - non-critical operation
-      print('Error updating user after login: $e');
+      debugPrint('Error updating user after login: $e');
     }
   }
 
@@ -361,7 +363,7 @@ class AuthService {
       final doc = await _firestore.collection('users').doc(uid).get();
       return doc.data();
     } catch (e) {
-      print('Error getting user data: $e');
+      debugPrint('Error getting user data: $e');
       return null;
     }
   }
@@ -412,8 +414,50 @@ class AuthService {
 
   Future<User?> signInWithGoogle() async {
     try {
-      // TODO: Implement Google Sign-In
-      throw Exception('Google Sign-In not implemented yet');
+      final GoogleSignIn googleSignIn = GoogleSignIn();
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      
+      if (googleUser == null) {
+        throw Exception('Google Sign-In was cancelled by user');
+      }
+      
+      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      
+      final AuthCredential credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+      
+      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      final User? user = userCredential.user;
+      
+      if (user != null) {
+        // Check if user already exists in Firestore
+        final userDoc = await _firestore.collection('users').doc(user.uid).get();
+        
+        if (!userDoc.exists) {
+          // Create new user document
+          await _firestore.collection('users').doc(user.uid).set({
+            'uid': user.uid,
+            'email': user.email,
+            'name': user.displayName ?? 'Google User',
+            'photoURL': user.photoURL,
+            'phoneNumber': '',
+            'bio': '',
+            'createdAt': Timestamp.now(),
+            'isOnline': true,
+            'lastSeenAt': Timestamp.now(),
+          });
+        } else {
+          // Update online status for existing user
+          await _firestore.collection('users').doc(user.uid).update({
+            'isOnline': true,
+            'lastSeenAt': Timestamp.now(),
+          });
+        }
+      }
+      
+      return user;
     } catch (e) {
       throw Exception('Google Sign-In failed: ${e.toString()}');
     }

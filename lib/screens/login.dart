@@ -182,16 +182,27 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       return;
     }
 
-    // TODO: Implement password reset functionality in AuthService
-    // await _authService.resetPassword(email);
+    try {
+      await _authService.resetPassword(email);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Password reset link sent to $email'),
-        backgroundColor: Colors.blue,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Password reset link sent to $email'),
+          backgroundColor: Colors.blue,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.toString()),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   @override
@@ -263,7 +274,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
             shape: BoxShape.circle,
             boxShadow: [
               BoxShadow(
-                color: Colors.blue.withOpacity(0.3),
+                color: Colors.blue.withValues(alpha: 0.3),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               ),
@@ -320,7 +331,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       style: const TextStyle(fontSize: 16),
       decoration: InputDecoration(
         labelText: "Email Address",
-        hintText: "Demo@example.com",
+        hintText: "demo@example.com",
         prefixIcon: Icon(Icons.email_outlined, color: Colors.blue[700]),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),

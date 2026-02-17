@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:file_picker/file_picker.dart';
 
 class ChatScreen extends StatefulWidget {
   final String receiverId;
@@ -83,6 +84,49 @@ class _ChatScreenState extends State<ChatScreen> {
           ? widget.receiverId
           : _currentUser?.uid,
     });
+  }
+
+  Future<void> _attachFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles();
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        final fileName = file.name;
+        
+        final currentUser = _currentUser;
+        if (currentUser == null) return;
+
+        // Send file information as a message
+        await FirebaseFirestore.instance
+            .collection('chats')
+            .doc(_chatId)
+            .collection('messages')
+            .add({
+          'senderId': currentUser.uid,
+          'senderEmail': currentUser.email,
+          'receiverId': widget.receiverId,
+          'text': '📎 Sent a file: $fileName',
+          'fileUrl': '',
+          'fileName': fileName,
+          'isFile': true,
+          'timestamp': FieldValue.serverTimestamp(),
+        });
+
+        // Update recent chats for both users
+        await _updateRecentChats(currentUser.uid);
+        await _updateRecentChats(widget.receiverId);
+
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('File "$fileName" sent successfully')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to attach file: $e')),
+      );
+    }
   }
 
   @override
@@ -254,7 +298,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
+                color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -281,7 +325,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   timeString,
                   style: TextStyle(
                     color: isMe
-                        ? Colors.white.withOpacity(0.7)
+                        ? Colors.white.withValues(alpha: 0.7)
                         : Colors.grey[600],
                     fontSize: 10,
                   ),
@@ -301,7 +345,7 @@ class _ChatScreenState extends State<ChatScreen> {
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 10,
             offset: const Offset(0, -5),
           ),
@@ -317,7 +361,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 size: 28,
               ),
               onPressed: () {
-                // TODO: Implement attach file functionality
+                _attachFile();
               },
             ),
             Expanded(

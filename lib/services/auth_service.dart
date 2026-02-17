@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -231,7 +232,7 @@ class AuthService {
       });
     } catch (e) {
       // Log error but don't throw - non-critical operation
-      print('Error updating user after login: $e');
+      debugPrint('Error updating user after login: $e');
     }
   }
 
@@ -362,7 +363,7 @@ class AuthService {
       final doc = await _firestore.collection('users').doc(uid).get();
       return doc.data();
     } catch (e) {
-      print('Error getting user data: $e');
+      debugPrint('Error getting user data: $e');
       return null;
     }
   }

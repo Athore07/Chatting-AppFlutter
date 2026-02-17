@@ -632,7 +632,7 @@ class _UsersScreenState extends State<UsersScreen> {
         'senderId': messageDoc['senderId'] ?? '',
       };
     } catch (e) {
-      print('Error fetching last message: $e');
+      debugPrint('Error fetching last message: $e');
       return null;
     }
   }
@@ -656,7 +656,7 @@ class _UsersScreenState extends State<UsersScreen> {
       }
       return recentChats;
     } catch (e) {
-      print('Error fetching recent chat timestamps: $e');
+      debugPrint('Error fetching recent chat timestamps: $e');
       return {};
     }
   }

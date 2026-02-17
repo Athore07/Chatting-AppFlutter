@@ -1,10 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'login.dart';
 import 'package:flutter/services.dart';
-
+import 'login.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userId;
@@ -144,552 +142,264 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _infoRow(IconData icon, String title, String value) {
-    return Row(
-      children: [
-        Icon(icon, size: 20, color: Colors.grey[700]),
-        const SizedBox(width: 10),
-        Text(title),
-        const Spacer(),
-        Text(
-          value,
-          style: const TextStyle(fontWeight: FontWeight.w500),
-        ),
-      ],
-    );
-  }
-
-  // Edit mode
-  bool _isEditing = false;
-
-  // Controller for username
-  late TextEditingController _nameController;
-
-  @override
-  void initState() {
-    super.initState();
-    _nameController = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _saveProfile(String userId) async {
-    try {
-      // Show loading dialog
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
-      );
-
-      final newName = _nameController.text.trim();
-
-      if (newName.isEmpty) {
-        if (!mounted) return;
-        Navigator.pop(context);
-        _showSnackBar('Name cannot be empty', Colors.red);
-        return;
-      }
-
-      // Update Firestore
-      await _firestore.collection('users').doc(userId).update({
-        'name': newName,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-
-      // Update Firebase Auth profile
-      final user = _auth.currentUser;
-      if (user != null) {
-        await user.updateDisplayName(newName);
-      }
-
-      // Close loading dialog
-      if (!mounted) return;
-      Navigator.pop(context);
-
-      setState(() {
-        _isEditing = false;
-      });
-
-      _showSnackBar('Username updated successfully!', Colors.green);
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.pop(context);
-      _showSnackBar('Error updating username: $e', Colors.red);
-    }
-  }
-
-  void _cancelEditing() {
-    setState(() {
-      _isEditing = false;
-    });
-  }
-
-  void _showSnackBar(String message, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: color),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 20, color: Colors.grey[700]),
+          const SizedBox(width: 10),
+          Text(title),
+          const Spacer(),
+          Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w500),
+          ),
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final isCurrentUser = _auth.currentUser?.uid == widget.userId;
+    final isOwnProfile = _auth.currentUser?.uid == widget.userId;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _isEditing ? 'Edit Username' : 'Profile',
-          style: const TextStyle(fontWeight: FontWeight.w600),
+          _isEditing ? 'Edit Profile' : 'Profile',
+          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 20),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black87),
         actions: [
-          if (isCurrentUser && !_isEditing)
+          if (isOwnProfile && !_isEditing)
             IconButton(
               icon: const Icon(Icons.edit),
-              onPressed: () => setState(() => _isEditing = true),
+              onPressed: () {
+                // Get current data and start editing
+                _firestore.collection('users').doc(widget.userId).get().then((doc) {
+                  if (doc.exists) {
+                    _startEditing(doc.data() as Map<String, dynamic>);
+                  }
+                });
+              },
             ),
           if (_isEditing) ...[
             TextButton(
               onPressed: _cancelEditing,
               child: const Text('Cancel'),
             ),
-            TextButton(
-              onPressed: () => _saveProfile(widget.userId),
-              child: const Text(
-                'Save',
-                style: TextStyle(fontWeight: FontWeight.bold),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: _hasChanges ? _saveChanges : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _hasChanges ? Colors.blue : Colors.grey[300],
+                foregroundColor: _hasChanges ? Colors.white : Colors.grey[600],
               ),
+              child: const Text('Save'),
             ),
+            const SizedBox(width: 16),
           ],
         ],
       ),
-    final isOwnProfile = _auth.currentUser?.uid == widget.userId;
-
-    return Scaffold(
       backgroundColor: const Color(0xFFF5F7FA),
       body: StreamBuilder<DocumentSnapshot>(
         stream: _firestore.collection('users').doc(widget.userId).snapshots(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
+          }
+
+          if (!snapshot.hasData || !snapshot.data!.exists) {
+            return const Center(child: Text('User not found'));
           }
 
           final data = snapshot.data!.data() as Map<String, dynamic>;
 
-          // Initialize controller with user data
-          if (!_isEditing) {
-            _nameController.text = userData['name'] ?? '';
-          }
-
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
-                // Profile Header
+                // Profile Card
                 Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                   color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      // Profile Avatar
-                      CircleAvatar(
-                        radius: 50,
-                        backgroundColor: Colors.blue[50],
-                        backgroundImage: userData['photoURL'] != null
-                            ? NetworkImage(userData['photoURL'])
-                            : null,
-                        child: userData['photoURL'] == null
-                            ? Text(
-                          (userData['name'] ?? 'U')[0].toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 40,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue[700],
-                          ),
-                        )
-                            : null,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Username field (editable)
-              <<<<<<< main
-          // Initialize controller with user data
-          if (!_isEditing) {
-            _nameController.text = userData['name'] ?? '';
-          }
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                // Profile Header
-                Container(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.all(30),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(25),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
+                        blurRadius: 15,
+                        color: Colors.black.withOpacity(0.05),
+                        offset: const Offset(0, 8),
+                      )
                     ],
                   ),
                   child: Column(
                     children: [
-                      // Profile Avatar
-                      CircleAvatar(
-                        radius: 50,
-                        backgroundColor: Colors.blue[50],
-                        backgroundImage: userData['photoURL'] != null
-                            ? NetworkImage(userData['photoURL'])
-                            : null,
-                        child: userData['photoURL'] == null
-                            ? Text(
-                          (userData['name'] ?? 'U')[0].toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 40,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue[700],
-                          ),
-                        )
-                            : null,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Username field (editable)
-                      if (!        if (!_isEditing)
-                        Text(
-                          _nameController.text,
-                          style: const TextStyle(
-                            fontSize: 24,
-                            f<<<<<<< main
-          // Initialize controller with user data
-          if (!_isEditing) {
-            _nameController.text = userData['name'] ?? '';
-          }
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                // Profile Header
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      // Profile Avatar
-                      CircleAvatar(
-                        radius: 50,
-                        backgroundColor: Colors.blue[50],
-                        backgroundImage: userData['photoURL'] != null
-                            ? NetworkImage(userData['photoURL'])
-                            : null,
-                        child: userData['photoURL'] == null
-                            ? Text(
-                          (userData['name'] ?? 'U')[0].toUpperCase(),
-                          style: TextStyle(
-                            fontSize: 40,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.blue[700],
-                          ),
-                        )
-                            : null,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Username field (editable)
-                      if (!_isEditing)
-                        Text(
-                          _nameController.text,
-                          style: const TextStyle(
-                            fontSize: 24,
-                            ontWeight: FontWeight.bold,
-                          ),
-                        )
-                      else
-                        TextField(
-                          controller: _nameController,
-                          decoration: InputDecoration(
-                            labelText: 'Username',
-                            hintText: 'Enter your username',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            prefixIcon: const Icon(Icons.person),
-                          ),
-                        ),
-
-                      const SizedBox(height: 8),
-
-                      // Email (non-editable)
-                      Text(
-                        userData['email'] ?? 'No Email',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      // Bio (non-editable, display only)
-                      if (userData['bio'] != null && userData['bio'].toString().isNotEmpty)
-                        Text(
-                          userData['bio'],
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[500],
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-          return Column(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    children: [
-                      // Profile Card
-                      Container(
-                        padding: const EdgeInsets.all(30),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(25),
-                          boxShadow: [
-                            BoxShadow(
-                                blurRadius: 15,
-                                color: Colors.black.withOpacity(0.05),
-                                offset: const Offset(0, 8))
-                          ],
-                        ),
-                        child: Column(
-                          children: [
-                            Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                // Avatar
-                                CircleAvatar(
-                                  radius: 60,
-                                  backgroundColor: Colors.blue.shade100,
-                                  backgroundImage: (data['photoURL'] != null &&
-                                      data['photoURL']
-                                          .toString()
-                                          .isNotEmpty)
-                                      ? NetworkImage(data['photoURL'])
-                                      : null,
-                                  child: (data['photoURL'] == null ||
-                                      data['photoURL'].toString().isEmpty)
-                                      ? Text(
-                                    _getInitial(_isEditing
-                                        ? _nameController.text
-                                        : data['name']),
-                                    style: const TextStyle(
-                                        fontSize: 45,
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.blue),
-                                  )
-                                      : null,
-                                ),
-                                // Online indicator
-                                Positioned(
-                                  bottom: 8,
-                                  left: 8,
-                                  child: Container(
-                                    width: 18,
-                                    height: 18,
-                                    decoration: BoxDecoration(
-                                      color: data['isOnline'] == true
-                                          ? Colors.green
-                                          : Colors.grey,
-                                      shape: BoxShape.circle,
-                                      border: Border.all(
-                                          color: Colors.white, width: 2),
-                                    ),
-                                  ),
-                                ),
-                                // Edit icon on avatar
-                                if (isOwnProfile)
-                                  Positioned(
-                                    bottom: 0,
-                                    right: 0,
-                                    child: GestureDetector(
-                                      onTap: () {
-                                        _startEditing(data);
-                                      },
-                                      child: Container(
-                                        padding: const EdgeInsets.all(8),
-                                        decoration: const BoxDecoration(
-                                          color: Colors.blue,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.edit,
-                                          color: Colors.white,
-                                          size: 18,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-
-                            // Name
-                            _isEditing
-                                ? TextField(
-                              controller: _nameController,
-                              onChanged: (_) => _checkChanges(),
-                              decoration: _modernInput("Name"),
-                            )
-                                : Text(
-                              data['name'] ?? "No Name",
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          // Avatar
+                          CircleAvatar(
+                            radius: 60,
+                            backgroundColor: Colors.blue.shade100,
+                            backgroundImage: (data['photoURL'] != null &&
+                                data['photoURL'].toString().isNotEmpty)
+                                ? NetworkImage(data['photoURL'])
+                                : null,
+                            child: (data['photoURL'] == null ||
+                                data['photoURL'].toString().isEmpty)
+                                ? Text(
+                              _getInitial(_isEditing
+                                  ? _nameController.text
+                                  : data['name']),
                               style: const TextStyle(
-                                fontSize: 22,
+                                fontSize: 45,
                                 fontWeight: FontWeight.bold,
+                                color: Colors.blue,
                               ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              data['email'] ?? "",
-                              style: const TextStyle(color: Colors.grey),
-                            ),
-                            const SizedBox(height: 5),
-                            Text(
-                              data['isOnline'] == true
-                                  ? "Online"
-                                  : "Last seen ${_formatDate(data['lastSeen'])}",
-                              style: TextStyle(
+                            )
+                                : null,
+                          ),
+                          // Online indicator
+                          Positioned(
+                            bottom: 8,
+                            left: 8,
+                            child: Container(
+                              width: 18,
+                              height: 18,
+                              decoration: BoxDecoration(
                                 color: data['isOnline'] == true
                                     ? Colors.green
                                     : Colors.grey,
-                                fontSize: 13,
+                                shape: BoxShape.circle,
+                                border:
+                                Border.all(color: Colors.white, width: 2),
                               ),
                             ),
-                            const SizedBox(height: 15),
-                            _isEditing
-                                ? TextField(
-                              controller: _bioController,
-                              maxLines: 2,
-                              onChanged: (_) => _checkChanges(),
-                              decoration: _modernInput("Bio"),
-                            )
-                                : Text(
-                              data['bio']?.isNotEmpty == true
-                                  ? data['bio']
-                                  : "Add bio",
-                              style: const TextStyle(
-                                  color: Colors.blue),
+                          ),
+                          // Edit icon on avatar
+                          if (isOwnProfile && !_isEditing)
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: GestureDetector(
+                                onTap: () {
+                                  _startEditing(data);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.blue,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: const Icon(
+                                    Icons.edit,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                ),
+                              ),
                             ),
-                          ],
-                        ),
+                        ],
                       ),
                       const SizedBox(height: 16),
-                      // Info Card
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(20),
+
+                      // Name
+                      _isEditing
+                          ? TextField(
+                        controller: _nameController,
+                        onChanged: (_) => _checkChanges(),
+                        decoration: _modernInput("Name"),
+                      )
+                          : Text(
+                        data['name'] ?? "No Name",
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
                         ),
-                        child: Column(
-                          children: [
-                            _infoRow(Icons.calendar_today, "Member since",
-                                _formatDate(data['createdAt'])),
-                            const Divider(),
-                            _isEditing
-                                ? TextField(
-                              controller: _phoneController,
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly
-                              ],
-                              onChanged: (_) => _checkChanges(),
-                              decoration: _modernInput("Phone Number"),
-                            )
-                                : _infoRow(
-                              Icons.phone,
-                              "Phone",
-                              data['phoneNumber']?.isNotEmpty == true
-                                  ? data['phoneNumber']
-                                  : "Not provided",
-                            ),
-                          ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Email
+                      Text(
+                        data['email'] ?? "",
+                        style: const TextStyle(color: Colors.grey),
+                      ),
+                      const SizedBox(height: 5),
+
+                      // Online status
+                      Text(
+                        data['isOnline'] == true
+                            ? "Online"
+                            : "Last seen ${_formatDate(data['lastSeen'])}",
+                        style: TextStyle(
+                          color: data['isOnline'] == true
+                              ? Colors.green
+                              : Colors.grey,
+                          fontSize: 13,
                         ),
+                      ),
+                      const SizedBox(height: 15),
+
+                      // Bio
+                      _isEditing
+                          ? TextField(
+                        controller: _bioController,
+                        maxLines: 2,
+                        onChanged: (_) => _checkChanges(),
+                        decoration: _modernInput("Bio"),
+                      )
+                          : Text(
+                        data['bio']?.isNotEmpty == true
+                            ? data['bio']
+                            : "Add bio",
+                        style: const TextStyle(color: Colors.blue),
                       ),
                     ],
                   ),
                 ),
-              ),
-              if (_isEditing)
+
+                const SizedBox(height: 16),
+
+                // Info Card
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 10,
-                        offset: const Offset(0, 5),
-                      ),
-                    ],
                   ),
                   child: Column(
                     children: [
-                      _buildInfoRow(
-                        icon: Icons.calendar_today,
-                        label: 'Member Since',
-                        value: _formatDate(userData['createdAt']),
-                      ),
+                      _infoRow(Icons.calendar_today, "Member since",
+                          _formatDate(data['createdAt'])),
                       const Divider(),
-                      _buildInfoRow(
-                        icon: Icons.access_time,
-                        label: 'Last Active',
-                        value: userData['isOnline'] == true
-                            ? 'Online'
-                            : _formatDate(userData['lastSeen']),
-                      ),
-                      const Divider(),
-                      _buildInfoRow(
-                        icon: Icons.phone,
-                        label: 'Phone',
-                        value: userData['phoneNumber'] ?? 'Not provided',
+                      _isEditing
+                          ? TextField(
+                        controller: _phoneController,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly
+                        ],
+                        onChanged: (_) => _checkChanges(),
+                        decoration: _modernInput("Phone Number"),
+                      )
+                          : _infoRow(
+                        Icons.phone,
+                        "Phone",
+                        data['phoneNumber']?.isNotEmpty == true
+                            ? data['phoneNumber']
+                            : "Not provided",
                       ),
                     ],
                   ),
                 ),
+
                 const SizedBox(height: 20),
 
                 // Delete Account Button (only for current user)
-                if (currentUser?.uid == widget.userId && !_isEditing)
+                if (isOwnProfile && !_isEditing)
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
@@ -709,50 +419,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         },
       ),
     );
-  }
-
-  Widget _buildInfoRow({
-    required IconData icon,
-    required String label,
-    required String value,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: Colors.grey[600]),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 100,
-            child: Text(
-              label,
-              style: TextStyle(
-                color: Colors.grey[600],
-                fontSize: 14,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatDate(dynamic timestamp) {
-    if (timestamp == null) return 'Unknown';
-    if (timestamp is Timestamp) {
-      final date = timestamp.toDate();
-      return '${date.day}/${date.month}/${date.year}';
-    }
-    return 'Unknown';
   }
 
   void _showDeleteConfirmation() {
@@ -818,40 +484,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } catch (e) {
       if (mounted) {
         Navigator.pop(context);
-
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-              (route) => false,
-        );
-
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Account deleted: $e')),
+          SnackBar(content: Text('Error deleting account: $e')),
         );
       }
     }
-  }
-}
-                  padding: const EdgeInsets.all(16),
-                  width: double.infinity,
-                  child: Row(
-                    children: [
-                      const SizedBox(width:16),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: _saveChanges,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                          ),
-                          child: const Text("Save Changes"),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          );
-        },
-      ),
-    );
   }
 }

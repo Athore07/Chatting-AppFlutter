@@ -16,17 +16,115 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
+  // Edit mode
+  bool _isEditing = false;
+
+  // Controller for username
+  late TextEditingController _nameController;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveProfile(String userId) async {
+    try {
+      // Show loading dialog
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      final newName = _nameController.text.trim();
+
+      if (newName.isEmpty) {
+        if (!mounted) return;
+        Navigator.pop(context);
+        _showSnackBar('Name cannot be empty', Colors.red);
+        return;
+      }
+
+      // Update Firestore
+      await _firestore.collection('users').doc(userId).update({
+        'name': newName,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Update Firebase Auth profile
+      final user = _auth.currentUser;
+      if (user != null) {
+        await user.updateDisplayName(newName);
+      }
+
+      // Close loading dialog
+      if (!mounted) return;
+      Navigator.pop(context);
+
+      setState(() {
+        _isEditing = false;
+      });
+
+      _showSnackBar('Username updated successfully!', Colors.green);
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      _showSnackBar('Error updating username: $e', Colors.red);
+    }
+  }
+
+  void _cancelEditing() {
+    setState(() {
+      _isEditing = false;
+    });
+  }
+
+  void _showSnackBar(String message, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: color),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isCurrentUser = _auth.currentUser?.uid == widget.userId;
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Profile',
-          style: TextStyle(fontWeight: FontWeight.w600),
+        title: Text(
+          _isEditing ? 'Edit Username' : 'Profile',
+          style: const TextStyle(fontWeight: FontWeight.w600),
         ),
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black87),
+        actions: [
+          if (isCurrentUser && !_isEditing)
+            IconButton(
+              icon: const Icon(Icons.edit),
+              onPressed: () => setState(() => _isEditing = true),
+            ),
+          if (_isEditing) ...[
+            TextButton(
+              onPressed: _cancelEditing,
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => _saveProfile(widget.userId),
+              child: const Text(
+                'Save',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ],
       ),
       body: StreamBuilder<DocumentSnapshot>(
         stream: _firestore.collection('users').doc(widget.userId).snapshots(),
@@ -41,6 +139,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
           final userData = snapshot.data!.data() as Map<String, dynamic>;
           final currentUser = _auth.currentUser;
+
+          // Initialize controller with user data
+          if (!_isEditing) {
+            _nameController.text = userData['name'] ?? '';
+          }
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
@@ -63,57 +166,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Column(
                     children: [
                       // Profile Avatar
-                      Stack(
-                        children: [
-                          CircleAvatar(
-                            radius: 50,
-                            backgroundColor: Colors.blue[50],
-                            backgroundImage: userData['photoURL'] != null
-                                ? NetworkImage(userData['photoURL'])
-                                : null,
-                            child: userData['photoURL'] == null
-                                ? Text(
-                              (userData['name'] ?? 'U')[0].toUpperCase(),
-                              style: TextStyle(
-                                fontSize: 40,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue[700],
-                              ),
-                            )
-                                : null,
+                      CircleAvatar(
+                        radius: 50,
+                        backgroundColor: Colors.blue[50],
+                        backgroundImage: userData['photoURL'] != null
+                            ? NetworkImage(userData['photoURL'])
+                            : null,
+                        child: userData['photoURL'] == null
+                            ? Text(
+                          (userData['name'] ?? 'U')[0].toUpperCase(),
+                          style: TextStyle(
+                            fontSize: 40,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.blue[700],
                           ),
-                          if (currentUser?.uid == widget.userId)
-                            Positioned(
-                              bottom: 0,
-                              right: 0,
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  color: Colors.blue,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: Colors.white,
-                                    width: 2,
-                                  ),
-                                ),
-                                child: const Icon(
-                                  Icons.edit,
-                                  color: Colors.white,
-                                  size: 16,
-                                ),
-                              ),
-                            ),
-                        ],
+                        )
+                            : null,
                       ),
                       const SizedBox(height: 16),
-                      Text(
-                        userData['name'] ?? 'No Name',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
+
+                      // Username field (editable)
+                      if (!_isEditing)
+                        Text(
+                          _nameController.text,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                      else
+                        TextField(
+                          controller: _nameController,
+                          decoration: InputDecoration(
+                            labelText: 'Username',
+                            hintText: 'Enter your username',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            prefixIcon: const Icon(Icons.person),
+                          ),
                         ),
-                      ),
+
                       const SizedBox(height: 8),
+
+                      // Email (non-editable)
                       Text(
                         userData['email'] ?? 'No Email',
                         style: TextStyle(
@@ -121,8 +217,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           color: Colors.grey[600],
                         ),
                       ),
-                      if (userData['bio'] != null) ...[
-                        const SizedBox(height: 8),
+
+                      const SizedBox(height: 8),
+
+                      // Bio (non-editable, display only)
+                      if (userData['bio'] != null && userData['bio'].toString().isNotEmpty)
                         Text(
                           userData['bio'],
                           style: TextStyle(
@@ -131,7 +230,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           textAlign: TextAlign.center,
                         ),
-                      ],
                     ],
                   ),
                 ),
@@ -164,7 +262,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         label: 'Last Active',
                         value: userData['isOnline'] == true
                             ? 'Online'
-                            : _formatDate(userData['lastSeenAt']),
+                            : _formatDate(userData['lastSeen']),
                       ),
                       const Divider(),
                       _buildInfoRow(
@@ -178,7 +276,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(height: 20),
 
                 // Delete Account Button (only for current user)
-                if (currentUser?.uid == widget.userId)
+                if (currentUser?.uid == widget.userId && !_isEditing)
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton.icon(
@@ -274,13 +372,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _deleteAccount() async {
     try {
-      // Show loading dialog
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(),
-        ),
+        builder: (context) => const Center(child: CircularProgressIndicator()),
       );
 
       final currentUser = _auth.currentUser;
@@ -292,40 +387,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Delete user from Firebase Auth
       await currentUser.delete();
 
-      // Sign out the user completely
+      // Sign out
       await _auth.signOut();
 
-      // Close loading dialog and navigate to login screen
       if (mounted) {
         Navigator.pop(context); // Close loading dialog
-        
-        // Navigate to LoginScreen and remove all previous routes
+
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const LoginScreen()),
-          (route) => false,
+              (route) => false,
         );
-      }
 
-      // Show success message after navigation
-      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Account deleted successfully. Please register again to continue.')),
+          const SnackBar(content: Text('Account deleted successfully.')),
         );
       }
     } catch (e) {
-      // Close loading dialog
       if (mounted) {
         Navigator.pop(context);
-        
-        // Still navigate to login on error
+
         Navigator.of(context).pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const LoginScreen()),
-          (route) => false,
+              (route) => false,
         );
-      }
 
-      // Show error message
-      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Account deleted: $e')),
         );

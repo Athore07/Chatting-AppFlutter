@@ -214,8 +214,8 @@ class _ChatScreenState extends State<ChatScreen> {
         });
 
         // Update recent chats for both users
-        await _updateRecentChats(currentUser.uid);
-        await _updateRecentChats(widget.receiverId);
+        await _updateRecentChats(currentUser.uid, '📎 Sent a file: $fileName');
+        await _updateRecentChats(widget.receiverId, '📎 Sent a file: $fileName');
 
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -451,16 +451,6 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 ),
                 const SizedBox(height: 4),
-<<<<<<< HEAD
-                Text(
-                  timeString,
-                  style: TextStyle(
-                    color: isMe
-                        ? Colors.white.withValues(alpha: 0.7)
-                        : Colors.grey[600],
-                    fontSize: 10,
-                  ),
-=======
                 Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -468,7 +458,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       timeString,
                       style: TextStyle(
                         color: isMe
-                            ? Colors.white.withOpacity(0.7)
+                            ? Colors.white.withValues(alpha: 0.7)
                             : Colors.grey[600],
                         fontSize: 10,
                       ),
@@ -478,7 +468,6 @@ class _ChatScreenState extends State<ChatScreen> {
                       _buildMessageStatusIcon(isDelivered, isRead),
                     ],
                   ],
->>>>>>> 135513d3b0b158eec77871bd11c3c9501ad0e6f4
                 ),
               ],
             ),
@@ -509,7 +498,7 @@ class _ChatScreenState extends State<ChatScreen> {
           Icon(
             Icons.done_all,
             size: 14,
-            color: Colors.white.withOpacity(0.7),
+            color: Colors.white.withValues(alpha: 0.7),
           ),
         ],
       );
@@ -521,7 +510,7 @@ class _ChatScreenState extends State<ChatScreen> {
           Icon(
             Icons.done,
             size: 14,
-            color: Colors.white.withOpacity(0.7),
+            color: Colors.white.withValues(alpha: 0.7),
           ),
         ],
       );

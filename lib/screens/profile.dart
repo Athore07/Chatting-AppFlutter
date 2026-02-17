@@ -22,6 +22,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late TextEditingController _nameController;
   late TextEditingController _bioController;
   late TextEditingController _phoneController;
+  DateTime? _memberSinceDate; // Add this for member since date
 
   // store original values
   Map<String, dynamic> _originalValues = {};
@@ -63,18 +64,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
         "name": data['name'] ?? "",
         "bio": data['bio'] ?? "",
         "phoneNumber": data['phoneNumber'] ?? "",
+        "createdAt": data['createdAt'],
       };
 
       _nameController.text = _originalValues['name']!;
       _bioController.text = _originalValues['bio']!;
       _phoneController.text = _originalValues['phoneNumber']!;
+      _memberSinceDate = (data['createdAt'] as Timestamp?)?.toDate();
     });
   }
 
   void _checkChanges() {
     final changed = _nameController.text.trim() != _originalValues['name'] ||
         _bioController.text.trim() != _originalValues['bio'] ||
-        _phoneController.text.trim() != _originalValues['phoneNumber'];
+        _phoneController.text.trim() != _originalValues['phoneNumber'] ||
+        _memberSinceDate != (_originalValues['createdAt'] as Timestamp?)?.toDate();
 
     if (_hasChanges != changed) {
       setState(() {
@@ -92,6 +96,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _nameController.text = _originalValues['name']!;
       _bioController.text = _originalValues['bio']!;
       _phoneController.text = _originalValues['phoneNumber']!;
+      _memberSinceDate = (_originalValues['createdAt'] as Timestamp?)?.toDate();
     });
   }
 
@@ -112,6 +117,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (_phoneController.text.trim() != _originalValues['phoneNumber']) {
       updates['phoneNumber'] = _phoneController.text.trim();
     }
+    if (_memberSinceDate != (_originalValues['createdAt'] as Timestamp?)?.toDate()) {
+      updates['createdAt'] = Timestamp.fromDate(_memberSinceDate!);
+    }
 
     if (updates.isNotEmpty) {
       await _firestore.collection('users').doc(widget.userId).update(updates);
@@ -126,6 +134,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     } else {
       _cancelEditing(); // no updates, just cancel
+    }
+  }
+
+  Future<void> _selectDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _memberSinceDate ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null && picked != _memberSinceDate) {
+      setState(() {
+        _memberSinceDate = picked;
+        _checkChanges();
+      });
     }
   }
 
@@ -155,6 +178,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: const TextStyle(fontWeight: FontWeight.w500),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _editableDateRow(IconData icon, String title) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: InkWell(
+        onTap: _selectDate,
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: Colors.grey[700]),
+            const SizedBox(width: 10),
+            Text(title),
+            const Spacer(),
+            Text(
+              _memberSinceDate != null
+                  ? "${_memberSinceDate!.day}/${_memberSinceDate!.month}/${_memberSinceDate!.year}"
+                  : "Select date",
+              style: const TextStyle(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.arrow_drop_down, color: Colors.grey),
+          ],
+        ),
       ),
     );
   }
@@ -372,7 +420,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   child: Column(
                     children: [
-                      _infoRow(Icons.calendar_today, "Member since",
+                      _isEditing
+                          ? _editableDateRow(Icons.calendar_today, "Member since")
+                          : _infoRow(Icons.calendar_today, "Member since",
                           _formatDate(data['createdAt'])),
                       const Divider(),
                       _isEditing

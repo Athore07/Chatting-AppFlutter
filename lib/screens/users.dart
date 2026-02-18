@@ -1,10 +1,12 @@
-import 'package:chatting_app/screens/profile.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:chatting_app/screens/chart.dart';
+import 'package:chatting_app/screens/settings.dart';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-
-import 'chart.dart';
-import 'login.dart';
+import 'package:provider/provider.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../services/auth_service.dart';
+import '../../services/chat_service.dart';
+import '../model/message_model.dart';
+import '../model/user_model.dart';
 
 class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
@@ -14,619 +16,658 @@ class UsersScreen extends StatefulWidget {
 }
 
 class _UsersScreenState extends State<UsersScreen> {
-  final currentUser = FirebaseAuth.instance.currentUser;
-  final searchController = TextEditingController();
-  String searchQuery = '';
-  bool isSearching = false;
+  AppUser? _currentUser;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  // Track users with their last message time
+  Map<String, DateTime?> _userLastMessageTime = {};
+
+  // List of vibrant colors for avatars
+  final List<Color> _avatarColors = [
+    Colors.blue,
+    Colors.green,
+    Colors.orange,
+    Colors.purple,
+    Colors.pink,
+    Colors.teal,
+    Colors.amber,
+    Colors.indigo,
+    Colors.cyan,
+    Colors.deepOrange,
+    Colors.brown,
+    Colors.blueGrey,
+    Colors.red,
+    Colors.lightGreen,
+    Colors.deepPurple,
+  ];
 
   @override
   void initState() {
     super.initState();
-    _updateUserStatus(true);
+    _loadCurrentUser();
+    _setupSearchListener();
   }
 
-  @override
-  void dispose() {
-    _updateUserStatus(false);
-    searchController.dispose();
-    super.dispose();
-  }
+  Future<void> _loadCurrentUser() async {
+    try {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
 
-  Future<void> _updateUserStatus(bool isOnline) async {
-    if (currentUser != null) {
-      try {
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(currentUser!.uid)
-            .update({
-          'isOnline': isOnline,
-          'lastSeen': FieldValue.serverTimestamp(),
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final user = await authService.getCurrentUserData();
+
+      if (mounted) {
+        setState(() {
+          _currentUser = user;
+          _isLoading = false;
         });
-      } catch (e) {
-        debugPrint('Error updating user status: $e');
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to load user data: $e';
+          _isLoading = false;
+        });
       }
     }
   }
 
-  Future<void> _logout() async {
-    try {
-      if (!mounted) return;
+  void _setupSearchListener() {
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text;
+      });
+    });
+  }
 
-      await _updateUserStatus(false);
+  // Get color for user based on their ID
+  Color _getUserColor(String userId) {
+    if (userId.isEmpty) return Colors.blue;
+    final hash = userId.hashCode.abs();
+    return _avatarColors[hash % _avatarColors.length];
+  }
 
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
-      );
-
-      await FirebaseAuth.instance.signOut();
-
-      if (!mounted) return;
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
-    } catch (e) {
-      if (!mounted) return;
-      Navigator.pop(context);
-      _showSnackBar('Logout failed: $e', Colors.red);
+  // Get display name - either from displayName or from email
+  String _getDisplayName(AppUser user) {
+    if (user.displayName.isNotEmpty) {
+      return user.displayName;
     }
+    final emailParts = user.email.split('@');
+    if (emailParts.isNotEmpty) {
+      final namePart = emailParts[0];
+      return namePart
+          .replaceAll('_', ' ')
+          .replaceAll('.', ' ')
+          .split(' ')
+          .map((word) => word.isNotEmpty
+          ? '${word[0].toUpperCase()}${word.substring(1).toLowerCase()}'
+          : '')
+          .join(' ');
+    }
+    return 'Unknown User';
   }
 
-  void _showSnackBar(String message, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: color),
-    );
+  // Get first character for avatar
+  String _getAvatarLetter(AppUser user) {
+    if (user.displayName.isNotEmpty) {
+      return user.displayName[0].toUpperCase();
+    }
+    if (user.email.isNotEmpty) {
+      return user.email[0].toUpperCase();
+    }
+    return '?';
   }
 
-  void _showLogoutDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
-          ElevatedButton(
-            onPressed: _logout,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showProfileMenu(BuildContext context, String userId) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            _buildMenuTile(
-              icon: Icons.person,
-              iconColor: Colors.blue,
-              title: 'View Profile',
-              subtitle: 'See your profile information',
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => ProfileScreen(userId: userId)),
-                );
-              },
-            ),
-            _buildMenuTile(
-              icon: Icons.settings,
-              iconColor: Colors.orange,
-              title: 'Settings',
-              subtitle: 'App preferences and settings',
-              onTap: () {
-                Navigator.pop(context);
-                _showSnackBar('Settings coming soon!', Colors.blue);
-              },
-            ),
-            const Divider(),
-            _buildMenuTile(
-              icon: Icons.logout,
-              iconColor: Colors.red,
-              title: 'Logout',
-              subtitle: 'Sign out from your account',
-              onTap: () {
-                Navigator.pop(context);
-                _showLogoutDialog();
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMenuTile({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String subtitle,
-    required VoidCallback onTap,
-  }) {
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: iconColor.withOpacity(0.1),
-        child: Icon(icon, color: iconColor),
-      ),
-      title: Text(title),
-      subtitle: Text(subtitle),
-      onTap: onTap,
-    );
-  }
-
-  void _navigateToChat(BuildContext context, String receiverId, String receiverEmail, String receiverName) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ChatScreen(
-          receiverId: receiverId,
-          senderId: currentUser?.uid ?? '',
-          receiverName: receiverName,
-        ),
-      ),
-    );
-  }
-
-  String _formatEmail(String email) {
-    final atIndex = email.indexOf('@');
-    return atIndex > 0 ? email.substring(0, atIndex) : email;
-  }
-
-  String _formatLastSeen(Timestamp? lastSeen) {
-    if (lastSeen == null) return 'Offline';
+  // Format last message time
+  String _formatMessageTime(DateTime? timestamp) {
+    if (timestamp == null) return '';
 
     final now = DateTime.now();
-    final lastSeenDate = lastSeen.toDate();
-    final difference = now.difference(lastSeenDate);
+    final difference = now.difference(timestamp);
 
     if (difference.inMinutes < 1) {
-      return 'Just now';
+      return 'now';
     } else if (difference.inHours < 1) {
-      return '${difference.inMinutes} min ago';
+      return '${difference.inMinutes}m';
     } else if (difference.inDays < 1) {
-      return '${difference.inHours} hr ago';
+      return '${difference.inHours}h';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays}d';
     } else {
-      return '${difference.inDays} days ago';
+      return '${timestamp.day}/${timestamp.month}';
     }
   }
 
-  Future<Map<String, dynamic>?> _getLastMessageWithStatus(String currentUserId, String otherUserId) async {
-    try {
-      final chatId = currentUserId.compareTo(otherUserId) < 0
-          ? '$currentUserId-$otherUserId'
-          : '$otherUserId-$currentUserId';
-
-      final snapshot = await FirebaseFirestore.instance
-          .collection('chats')
-          .doc(chatId)
-          .collection('messages')
-          .orderBy('timestamp', descending: true)
-          .limit(1)
-          .get();
-
-      if (snapshot.docs.isEmpty) return null;
-
-      final messageDoc = snapshot.docs.first.data();
-      return {
-        'message': messageDoc['text'] ?? '',
-        'senderId': messageDoc['senderId'] ?? '',
-        'isDelivered': messageDoc['isDelivered'] ?? false,
-        'isRead': messageDoc['isRead'] ?? false,
-        'timestamp': messageDoc['timestamp'],
-      };
-    } catch (e) {
-      debugPrint('Error fetching last message: $e');
-      return null;
-    }
+  // Truncate message for preview
+  String _truncateMessage(String message, {int maxLength = 35}) {
+    if (message.length <= maxLength) return message;
+    return '${message.substring(0, maxLength)}...';
   }
 
-  Future<Map<String, Timestamp>> _getRecentChatTimestamps(String userId) async {
-    try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .collection('recent_chats')
-          .get();
-
-      return {
-        for (var doc in snapshot.docs)
-          if (doc.data()['withUserId'] != null && doc.data()['timestamp'] != null)
-            doc.data()['withUserId']: doc.data()['timestamp'] as Timestamp,
-      };
-    } catch (e) {
-      debugPrint('Error fetching recent chat timestamps: $e');
-      return {};
-    }
+  // Get message preview text with sender indicator
+  String _getMessagePreview(Message message, String currentUserId) {
+    final isMe = message.senderId == currentUserId;
+    final preview = _truncateMessage(message.text);
+    return isMe ? 'You: $preview' : preview;
   }
 
-  Widget _buildStatusIndicator(bool isOnline, Timestamp? lastSeen) {
-    return Container(
-      width: 12,
-      height: 12,
-      decoration: BoxDecoration(
-        color: isOnline ? Colors.green : Colors.grey,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 2),
-      ),
-      child: isOnline
-          ? null
-          : Container(), // Just for the colored circle
-    );
-  }
+  // Sort users by last message time (most recent first)
+  List<AppUser> _sortUsersByRecent(List<AppUser> users) {
+    // Create a copy of the list
+    final sortedUsers = List<AppUser>.from(users);
 
-  Widget _buildMessageStatusIcon(Map<String, dynamic>? messageData, bool isCurrentUser) {
-    if (messageData == null || !isCurrentUser) return const SizedBox.shrink();
+    // Sort: users with messages appear first, then sort by last message time
+    sortedUsers.sort((a, b) {
+      final timeA = _userLastMessageTime[a.uid];
+      final timeB = _userLastMessageTime[b.uid];
 
-    final isDelivered = messageData['isDelivered'] ?? false;
-    final isRead = messageData['isRead'] ?? false;
-
-    if (isRead) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.done_all, size: 16, color: Colors.blue[700]),
-          const SizedBox(width: 4),
-        ],
-      );
-    } else if (isDelivered) {
-      return Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.done_all, size: 16, color: Colors.grey[600]),
-            const SizedBox(width: 4),
-            ]
-      );
-    } else {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.done, size: 16, color: Colors.grey[600]),
-          const SizedBox(width: 4),
-        ],
-      );
-    }
-  }
-
-  Widget _buildUserTile({
-    required BuildContext context,
-    required String userId,
-    required String userName,
-    required String userEmail,
-    required String currentUserId,
-    required bool isOnline,
-    required Timestamp? lastSeen,
-  }) {
-    return Card(
-      elevation: 2,
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        leading: Stack(
-          children: [
-            CircleAvatar(
-              radius: 24,
-              backgroundColor: Colors.blue[50],
-              child: Text(
-                userName.isNotEmpty ? userName[0].toUpperCase() : '?',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.blue[700]),
-              ),
-            ),
-            Positioned(
-              bottom: 0,
-              right: 0,
-              child: _buildStatusIndicator(isOnline, lastSeen),
-            ),
-          ],
-        ),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                userName,
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: Colors.black87),
-              ),
-            ),
-            if (!isOnline && lastSeen != null)
-              Text(
-                _formatLastSeen(lastSeen),
-                style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-              ),
-          ],
-        ),
-        subtitle: FutureBuilder<Map<String, dynamic>?>(
-          future: _getLastMessageWithStatus(currentUserId, userId),
-          builder: (context, snapshot) {
-            String lastMessageText = 'No messages';
-            Widget? statusIcon;
-
-            if (snapshot.hasData && snapshot.data != null) {
-              final messageData = snapshot.data!;
-              final isYourMessage = messageData['senderId'] == currentUserId;
-              final message = messageData['message'] ?? '';
-
-              lastMessageText = isYourMessage ? 'You: $message' : message;
-
-              if (isYourMessage) {
-                statusIcon = _buildMessageStatusIcon(messageData, true);
-              }
-            }
-
-            return Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Row(
-                children: [
-                  if (statusIcon != null) statusIcon,
-                  Expanded(
-                    child: Text(
-                      lastMessageText,
-                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.blue[50],
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.chat_bubble_outline, size: 18, color: Colors.blue[700]),
-              const SizedBox(width: 4),
-              Text("Chat", style: TextStyle(color: Colors.blue[700], fontWeight: FontWeight.w500, fontSize: 13)),
-            ],
-          ),
-        ),
-        onTap: () => _navigateToChat(context, userId, userEmail, userName),
-      ),
-    );
-  }
-
-  Widget _buildErrorState(AsyncSnapshot snapshot) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
-          const SizedBox(height: 16),
-          Text("Error loading users", style: TextStyle(fontSize: 16, color: Colors.grey[600])),
-          const SizedBox(height: 8),
-          Text(snapshot.error.toString(), style: TextStyle(fontSize: 14, color: Colors.grey[500]), textAlign: TextAlign.center),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.people_outline, size: 64, color: Colors.grey[400]),
-          const SizedBox(height: 16),
-          Text("No users found", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: Colors.grey[600])),
-          const SizedBox(height: 8),
-          Text("Invite friends to start chatting", style: TextStyle(fontSize: 14, color: Colors.grey[500])),
-        ],
-      ),
-    );
-  }
-
-  List<QueryDocumentSnapshot> _filterUsers(List<QueryDocumentSnapshot> users) {
-    if (searchQuery.isEmpty) return users;
-
-    return users.where((user) {
-      final data = user.data() as Map<String, dynamic>;
-      final name = (data['name'] as String?)?.toLowerCase() ?? '';
-      final email = (data['email'] as String?)?.toLowerCase() ?? '';
-      return name.contains(searchQuery) || email.contains(searchQuery);
-    }).toList();
-  }
-
-  List<QueryDocumentSnapshot> _sortUsers(
-      List<QueryDocumentSnapshot> users,
-      Map<String, Timestamp> recentChats,
-      ) {
-    final filteredUsers = _filterUsers(users);
-
-    filteredUsers.sort((a, b) {
-      final aData = a.data() as Map<String, dynamic>;
-      final bData = b.data() as Map<String, dynamic>;
-      final aId = aData['uid'] ?? '';
-      final bId = bData['uid'] ?? '';
-
-      // Skip current user in sorting logic
-      if (aId == currentUser?.uid && bId != currentUser?.uid) return 1;
-      if (bId == currentUser?.uid && aId != currentUser?.uid) return -1;
-      if (aId == currentUser?.uid && bId == currentUser?.uid) return 0;
-
-      // Sort online users first
-      final aOnline = aData['isOnline'] ?? false;
-      final bOnline = bData['isOnline'] ?? false;
-
-      if (aOnline && !bOnline) return -1;
-      if (!aOnline && bOnline) return 1;
-
-      final aHasRecent = recentChats.containsKey(aId);
-      final bHasRecent = recentChats.containsKey(bId);
-
-      if (aHasRecent && !bHasRecent) return -1;
-      if (!aHasRecent && bHasRecent) return 1;
-      if (aHasRecent && bHasRecent) {
-        return recentChats[bId]?.compareTo(recentChats[aId] ?? Timestamp.now()) ?? 0;
+      // If both have messages, sort by time (most recent first)
+      if (timeA != null && timeB != null) {
+        return timeB.compareTo(timeA);
       }
-
-      return (aData['name'] ?? '').compareTo(bData['name'] ?? '');
+      // If only A has messages, A comes first
+      if (timeA != null && timeB == null) return -1;
+      // If only B has messages, B comes first
+      if (timeA == null && timeB != null) return 1;
+      // If neither has messages, sort alphabetically
+      return _getDisplayName(a).compareTo(_getDisplayName(b));
     });
 
-    return filteredUsers;
+    return sortedUsers;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: isSearching
-            ? TextField(
-          controller: searchController,
-          autofocus: true,
-          decoration: InputDecoration(
-            hintText: 'Search users by name or email...',
-            hintStyle: TextStyle(color: Colors.grey[400]),
-            border: InputBorder.none,
-          ),
-          style: const TextStyle(color: Colors.black87, fontSize: 16),
-          onChanged: (value) => setState(() => searchQuery = value.toLowerCase().trim()),
-        )
-            : const Text("Chat Users", style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black87)),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black87),
-        leading: isSearching
-            ? IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            setState(() {
-              isSearching = false;
-              searchQuery = '';
-              searchController.clear();
-            });
-          },
-        )
-            : null,
-        actions: [
-          if (!isSearching)
-            IconButton(
-              icon: const Icon(Icons.search),
-              onPressed: () => setState(() => isSearching = true),
-            ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.settings),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            onSelected: (value) {
-              switch (value) {
-                case 'profile':
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => ProfileScreen(userId: currentUser?.uid ?? '')));
-                  break;
-                case 'settings':
-                  _showSnackBar('Settings coming soon!', Colors.blue);
-                  break;
-                case 'logout':
-                  _showLogoutDialog();
-                  break;
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'profile', child: Row(children: [Icon(Icons.person, color: Colors.blue), SizedBox(width: 8), Text('Profile')])),
-              const PopupMenuItem(value: 'settings', child: Row(children: [Icon(Icons.settings, color: Colors.orange), SizedBox(width: 8), Text('Settings')])),
-              const PopupMenuItem(value: 'logout', child: Row(children: [Icon(Icons.logout, color: Colors.red), SizedBox(width: 8), Text('Logout')])),
+    final authService = Provider.of<AuthService>(context, listen: false);
+    final chatService = Provider.of<ChatService>(context, listen: false);
+
+    if (_errorMessage != null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Chats'),
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 60, color: Colors.red),
+              const SizedBox(height: 16),
+              Text(_errorMessage!),
+              ElevatedButton(
+                onPressed: _loadCurrentUser,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
+                child: const Text('Retry'),
+              ),
             ],
+          ),
+        ),
+      );
+    }
+
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_currentUser == null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Chats'),
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+        ),
+        body: const Center(
+          child: Text('Unable to load user data. Please login again.'),
+        ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.grey[100],
+      appBar: AppBar(
+        title: const Text(
+          'Chats',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+        elevation: 2,
+        actions: [
+          // Current user profile badge
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(25),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircleAvatar(
+                  radius: 14,
+                  backgroundColor: _getUserColor(_currentUser!.uid),
+                  backgroundImage: _currentUser!.photoURL != null
+                      ? CachedNetworkImageProvider(_currentUser!.photoURL!)
+                      : null,
+                  child: _currentUser!.photoURL == null
+                      ? Text(
+                    _getAvatarLetter(_currentUser!),
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                      : null,
+                ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    _getDisplayName(_currentUser!).split(' ').first,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Colors.white,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Settings button
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const SettingsScreen()),
+              ).then((_) => _loadCurrentUser());
+            },
+            tooltip: 'Settings',
+          ),
+
+          // Logout button
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => _showLogoutDialog(context, authService),
+            tooltip: 'Logout',
           ),
         ],
       ),
-      body: Container(
-        color: Colors.grey[50],
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance.collection("users").snapshots(),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator(color: Colors.blue));
-            }
-            if (snapshot.hasError) return _buildErrorState(snapshot);
-            if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return _buildEmptyState();
+      body: Column(
+        children: [
+          // Search bar
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: Colors.white,
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search users...',
+                prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                  icon: const Icon(Icons.clear, color: Colors.grey),
+                  onPressed: () => _searchController.clear(),
+                )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide.none,
+                ),
+                filled: true,
+                fillColor: Colors.grey[50],
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20),
+              ),
+            ),
+          ),
 
-            final allUsers = snapshot.data!.docs;
-
-            return FutureBuilder<Map<String, Timestamp>>(
-              future: _getRecentChatTimestamps(currentUser?.uid ?? ''),
-              builder: (context, recentSnapshot) {
-                if (recentSnapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator(color: Colors.blue));
+          // Users list with chat previews
+          Expanded(
+            child: StreamBuilder<List<AppUser>>(
+              stream: _searchQuery.isEmpty
+                  ? chatService.getUsers(_currentUser!.uid)
+                  : chatService.searchUsers(_searchQuery, _currentUser!.uid),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
                 }
 
-                final recentChats = recentSnapshot.data ?? {};
-                final sortedUsers = _sortUsers(allUsers, recentChats);
-
-                // Filter out current user
-                final filteredUsers = sortedUsers.where((user) {
-                  final userData = user.data() as Map<String, dynamic>;
-                  return userData['uid'] != currentUser?.uid;
-                }).toList();
-
-                if (filteredUsers.isEmpty) {
+                if (snapshot.hasError) {
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.people_outline, size: 64, color: Colors.grey[400]),
+                        const Icon(Icons.error_outline, size: 60, color: Colors.red),
                         const SizedBox(height: 16),
-                        Text(
-                          searchQuery.isEmpty ? "No other users found" : "No users match your search",
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w500, color: Colors.grey[600]),
+                        Text('Error: ${snapshot.error}'),
+                        ElevatedButton(
+                          onPressed: () => setState(() {}),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('Retry'),
                         ),
                       ],
                     ),
                   );
                 }
 
-                return ListView.separated(
-                  padding: const EdgeInsets.all(16),
-                  itemCount: filteredUsers.length,
-                  separatorBuilder: (context, index) => const Divider(height: 1, indent: 80),
-                  itemBuilder: (context, index) {
-                    final userData = filteredUsers[index].data() as Map<String, dynamic>;
-                    final userId = userData["uid"] ?? '';
-                    final userEmail = userData["email"] ?? 'No email';
-                    final userName = userData["name"] ?? _formatEmail(userEmail);
-                    final isOnline = userData["isOnline"] ?? false;
-                    final lastSeen = userData["lastSeen"] as Timestamp?;
+                if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(20),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            _searchQuery.isEmpty
+                                ? Icons.person_outline
+                                : Icons.search_off,
+                            size: 60,
+                            color: Colors.grey[400],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          _searchQuery.isEmpty
+                              ? 'No users found'
+                              : 'No users matching "$_searchQuery"',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        if (_searchQuery.isNotEmpty)
+                          TextButton(
+                            onPressed: () => _searchController.clear(),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.blue,
+                            ),
+                            child: const Text('Clear search'),
+                          ),
+                      ],
+                    ),
+                  );
+                }
 
-                    return _buildUserTile(
-                      context: context,
-                      userId: userId,
-                      userName: userName,
-                      userEmail: userEmail,
-                      currentUserId: currentUser?.uid ?? '',
-                      isOnline: isOnline,
-                      lastSeen: lastSeen,
+                final users = snapshot.data!;
+
+                // Clear old last message times
+                _userLastMessageTime.clear();
+
+                // Load last message for each user to determine recent contacts
+                return FutureBuilder(
+                  future: Future.wait(
+                    users.map((user) async {
+                      final lastMessage = await chatService.getLastMessage(
+                        _currentUser!.uid,
+                        user.uid,
+                      ).first;
+
+                      if (lastMessage != null && mounted) {
+                        _userLastMessageTime[user.uid] = lastMessage.timestamp;
+                      }
+                      return user;
+                    }),
+                  ),
+                  builder: (context, futureSnapshot) {
+                    // Sort users by recent activity
+                    final sortedUsers = _sortUsersByRecent(users);
+
+                    return ListView.builder(
+                      padding: const EdgeInsets.all(8),
+                      itemCount: sortedUsers.length,
+                      itemBuilder: (context, index) {
+                        final user = sortedUsers[index];
+                        final userColor = _getUserColor(user.uid);
+                        final hasRecentMessage = _userLastMessageTime.containsKey(user.uid);
+
+                        return StreamBuilder<Message?>(
+                          stream: chatService.getLastMessage(
+                            _currentUser!.uid,
+                            user.uid,
+                          ),
+                          builder: (context, messageSnapshot) {
+                            final lastMessage = messageSnapshot.data;
+                            final hasLastMessage = lastMessage != null;
+
+                            // Update last message time in map
+                            if (hasLastMessage && mounted) {
+                              _userLastMessageTime[user.uid] = lastMessage.timestamp;
+                            }
+
+                            return Card(
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              elevation: 2,
+                              shadowColor: Colors.black12,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              color: Colors.white,
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(16),
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ChatScreen(
+                                        currentUser: _currentUser!,
+                                        otherUser: user,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Row(
+                                    children: [
+                                      // Avatar with color
+                                      Stack(
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 30,
+                                            backgroundColor: userColor,
+                                            backgroundImage: user.photoURL != null
+                                                ? CachedNetworkImageProvider(user.photoURL!)
+                                                : null,
+                                            child: user.photoURL == null
+                                                ? Text(
+                                              _getAvatarLetter(user),
+                                              style: const TextStyle(
+                                                fontSize: 24,
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            )
+                                                : null,
+                                          ),
+                                          // Online indicator
+                                          if (user.isOnline == true)
+                                            Positioned(
+                                              bottom: 2,
+                                              right: 2,
+                                              child: Container(
+                                                width: 12,
+                                                height: 12,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.green,
+                                                  shape: BoxShape.circle,
+                                                  border: Border.all(
+                                                    color: Colors.white,
+                                                    width: 2,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(width: 12),
+
+                                      // User info and last message
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            // Display name with recent indicator
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    _getDisplayName(user),
+                                                    style: TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight: hasRecentMessage
+                                                          ? FontWeight.w600
+                                                          : FontWeight.normal,
+                                                      color: hasRecentMessage
+                                                          ? Colors.black87
+                                                          : Colors.grey[700],
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                if (hasRecentMessage)
+                                                  Container(
+                                                    margin: const EdgeInsets.only(left: 4),
+                                                    padding: const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2,
+                                                    ),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.blue.withOpacity(0.1),
+                                                      borderRadius: BorderRadius.circular(10),
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                            const SizedBox(height: 4),
+
+                                            // Last message preview
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    hasLastMessage
+                                                        ? _getMessagePreview(lastMessage, _currentUser!.uid)
+                                                        : 'Tap to start chatting',
+                                                    style: TextStyle(
+                                                      fontSize: 14,
+                                                      color: hasLastMessage
+                                                          ? Colors.grey[700]
+                                                          : Colors.grey[500],
+                                                      fontStyle: hasLastMessage
+                                                          ? FontStyle.normal
+                                                          : FontStyle.italic,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+
+                                      // Time and unread indicator
+                                      Column(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        crossAxisAlignment: CrossAxisAlignment.end,
+                                        children: [
+                                          if (hasLastMessage)
+                                            Text(
+                                              _formatMessageTime(lastMessage.timestamp),
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: hasRecentMessage
+                                                    ? Colors.blue
+                                                    : Colors.grey[500],
+                                                fontWeight: hasRecentMessage
+                                                    ? FontWeight.bold
+                                                    : FontWeight.normal,
+                                              ),
+                                            ),
+                                          const SizedBox(height: 4),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
                     );
                   },
                 );
               },
-            );
-          },
-        ),
+            ),
+          ),
+        ],
       ),
+    );
+  }
+
+  void _showLogoutDialog(BuildContext context, AuthService authService) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Logout'),
+          content: const Text('Are you sure you want to logout?'),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey[700],
+              ),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(context);
+                await authService.logout();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Logout'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

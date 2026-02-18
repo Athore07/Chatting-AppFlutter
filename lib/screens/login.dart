@@ -98,8 +98,8 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
       await _saveEmail(email);
 
       await _authService.login(
-        email: email,
-        password: password,
+        email,
+        password,
       );
 
       if (!mounted) return;

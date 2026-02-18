@@ -1,6 +1,7 @@
 import 'package:chatting_app/screens/login.dart';
 import 'package:chatting_app/screens/users.dart';
 import 'package:chatting_app/services/chat_service.dart';
+import 'package:chatting_app/services/theme_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -25,16 +26,20 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthService()),
         Provider<ChatService>(create: (_) => ChatService()),
+        ChangeNotifierProvider(create: (_) => ThemeService()),
         // Add other providers if needed
       ],
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'Chatting App',
-        theme: ThemeData(
-          primarySwatch: Colors.blue,
-          useMaterial3: true,
-        ),
-        home: const AuthWrapper(),
+      child: Consumer<ThemeService>(
+        builder: (context, themeService, child) {
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'Chat App',
+            theme: themeService.lightTheme,
+            darkTheme: themeService.darkTheme,
+            themeMode: themeService.themeMode,
+            home: const AuthWrapper(),
+          );
+        },
       ),
     );
   }

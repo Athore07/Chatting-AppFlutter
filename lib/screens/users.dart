@@ -8,6 +8,7 @@ import '../../services/chat_service.dart';
 import '../../widgets/safe_avatar.dart';
 import '../model/message_model.dart';
 import '../model/user_model.dart';
+import '../services/theme_service.dart';
 
 class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
@@ -38,7 +39,7 @@ class _UsersScreenState extends State<UsersScreen> {
   @override
   void initState() {
     super.initState();
-    _loadCurrentUser();
+      _loadCurrentUser();
     _setupSearchListener();
   }
 
@@ -48,7 +49,6 @@ class _UsersScreenState extends State<UsersScreen> {
         _isLoading = true;
         _errorMessage = null;
       });
-
       final authService = Provider.of<AuthService>(context, listen: false);
       final user = await authService.getCurrentUserData();
 

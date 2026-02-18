@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../services/auth_service.dart';
 import '../../services/notification_service.dart';
-import '../model/user_model.dart';
+import '../../services/theme_service.dart';
+import '../model/user_model.dart';  // Add this import
+
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -17,10 +19,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _notificationsEnabled = true;
   bool _soundEnabled = true;
   bool _vibrationEnabled = true;
-  bool _darkModeEnabled = false;
   bool _onlineStatusVisible = true;
   String _language = 'English';
-  String _theme = 'Light';
 
   // User data
   AppUser? _currentUser;
@@ -43,6 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _errorMessage = null;
       });
 
+      // Get auth service - OK in initState because it's not from Provider.of with listen
       final authService = Provider.of<AuthService>(context, listen: false);
       final user = await authService.getCurrentUserData();
 
@@ -64,15 +65,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _loadPreferences() async {
     // Load from SharedPreferences or Firestore
-    // For now, using default values
-    await Future.delayed(const Duration(milliseconds: 500)); // Simulate loading
+    await Future.delayed(const Duration(milliseconds: 500));
   }
 
   Future<void> _logout() async {
     try {
       final authService = Provider.of<AuthService>(context, listen: false);
 
-      // Show confirmation dialog
       final confirm = await showDialog<bool>(
         context: context,
         builder: (BuildContext context) {
@@ -99,7 +98,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       if (confirm == true && mounted) {
         await authService.logout();
-        // Navigation will be handled by auth state listener
       }
     } catch (e) {
       if (mounted) {
@@ -161,66 +159,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     });
                     Navigator.pop(context);
                     _showSuccessMessage('Language changed to French');
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _showThemeDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Select Theme'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                title: const Text('Light'),
-                leading: Radio<String>(
-                  value: 'Light',
-                  groupValue: _theme,
-                  onChanged: (value) {
-                    setState(() {
-                      _theme = value!;
-                      _darkModeEnabled = false;
-                    });
-                    Navigator.pop(context);
-                    _showSuccessMessage('Light theme applied');
-                  },
-                ),
-              ),
-              ListTile(
-                title: const Text('Dark'),
-                leading: Radio<String>(
-                  value: 'Dark',
-                  groupValue: _theme,
-                  onChanged: (value) {
-                    setState(() {
-                      _theme = value!;
-                      _darkModeEnabled = true;
-                    });
-                    Navigator.pop(context);
-                    _showSuccessMessage('Dark theme applied');
-                  },
-                ),
-              ),
-              ListTile(
-                title: const Text('System Default'),
-                leading: Radio<String>(
-                  value: 'System',
-                  groupValue: _theme,
-                  onChanged: (value) {
-                    setState(() {
-                      _theme = value!;
-                    });
-                    Navigator.pop(context);
-                    _showSuccessMessage('System theme applied');
                   },
                 ),
               ),
@@ -610,6 +548,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Get theme service in build method (NOT in initState)
+    final themeService = Provider.of<ThemeService>(context);
+
     // Show loading state
     if (_isLoading) {
       return Scaffold(
@@ -814,7 +755,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const Divider(),
 
-          // Appearance
+          // Appearance - Now using ThemeService correctly
           _buildSectionHeader('Appearance'),
           _buildSettingsTile(
             icon: Icons.language,
@@ -822,22 +763,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: _language,
             onTap: _showLanguageDialog,
           ),
-          _buildSettingsTile(
-            icon: _darkModeEnabled ? Icons.dark_mode : Icons.light_mode,
-            title: 'Theme',
-            subtitle: _theme,
-            onTap: _showThemeDialog,
-          ),
-          _buildSwitchTile(
-            icon: Icons.nightlight_round,
-            title: 'Dark Mode',
-            value: _darkModeEnabled,
-            onChanged: (value) {
-              setState(() {
-                _darkModeEnabled = value;
-                _theme = value ? 'Dark' : 'Light';
-              });
-            },
+
+          // Theme toggle switch (using themeService from build)
+          SwitchListTile(
+            secondary: Icon(
+              themeService.isDarkMode ? Icons.dark_mode : Icons.light_mode,
+              color: Colors.blue,
+            ),
+            title: const Text('Dark Mode'),
+            subtitle: const Text('Toggle between light and dark theme'),
+            value: themeService.isDarkMode,
+            onChanged: (_) => themeService.toggleTheme(),
           ),
 
           const Divider(),

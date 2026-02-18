@@ -2,11 +2,11 @@ import 'package:chatting_app/screens/chart.dart';
 import 'package:chatting_app/screens/settings.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../services/auth_service.dart';
 import '../../services/chat_service.dart';
+import '../../widgets/safe_avatar.dart';
 import '../model/message_model.dart';
-import '../model/user_model.dart';
+import '../model/user_model.dart';  // Add this import
 
 class UsersScreen extends StatefulWidget {
   const UsersScreen({super.key});
@@ -23,7 +23,7 @@ class _UsersScreenState extends State<UsersScreen> {
   String? _errorMessage;
 
   // Track users with their last message time
-  Map<String, DateTime?> _userLastMessageTime = {};
+  final Map<String, DateTime?> _userLastMessageTime = {};
 
   // List of vibrant colors for avatars
   final List<Color> _avatarColors = [
@@ -200,6 +200,7 @@ class _UsersScreenState extends State<UsersScreen> {
               const Icon(Icons.error_outline, size: 60, color: Colors.red),
               const SizedBox(height: 16),
               Text(_errorMessage!),
+              const SizedBox(height: 16),
               ElevatedButton(
                 onPressed: _loadCurrentUser,
                 style: ElevatedButton.styleFrom(
@@ -255,22 +256,11 @@ class _UsersScreenState extends State<UsersScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                CircleAvatar(
+                SafeAvatar(
+                  imageUrl: _currentUser!.photoURL,
+                  name: _getDisplayName(_currentUser!),
                   radius: 14,
                   backgroundColor: _getUserColor(_currentUser!.uid),
-                  backgroundImage: _currentUser!.photoURL != null
-                      ? CachedNetworkImageProvider(_currentUser!.photoURL!)
-                      : null,
-                  child: _currentUser!.photoURL == null
-                      ? Text(
-                    _getAvatarLetter(_currentUser!),
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  )
-                      : null,
                 ),
                 const SizedBox(width: 6),
                 Flexible(
@@ -355,6 +345,7 @@ class _UsersScreenState extends State<UsersScreen> {
                         const Icon(Icons.error_outline, size: 60, color: Colors.red),
                         const SizedBox(height: 16),
                         Text('Error: ${snapshot.error}'),
+                        const SizedBox(height: 16),
                         ElevatedButton(
                           onPressed: () => setState(() {}),
                           style: ElevatedButton.styleFrom(
@@ -415,211 +406,179 @@ class _UsersScreenState extends State<UsersScreen> {
                 // Clear old last message times
                 _userLastMessageTime.clear();
 
-                // Load last message for each user to determine recent contacts
-                return FutureBuilder(
-                  future: Future.wait(
-                    users.map((user) async {
-                      final lastMessage = await chatService.getLastMessage(
+                return ListView.builder(
+                  padding: const EdgeInsets.all(8),
+                  itemCount: users.length,
+                  itemBuilder: (context, index) {
+                    final user = users[index];
+                    final userColor = _getUserColor(user.uid);
+
+                    return StreamBuilder<Message?>(
+                      stream: chatService.getLastMessage(
                         _currentUser!.uid,
                         user.uid,
-                      ).first;
+                      ),
+                      builder: (context, messageSnapshot) {
+                        final lastMessage = messageSnapshot.data;
+                        final hasLastMessage = lastMessage != null;
+                        final hasRecentMessage = hasLastMessage;
 
-                      if (lastMessage != null && mounted) {
-                        _userLastMessageTime[user.uid] = lastMessage.timestamp;
-                      }
-                      return user;
-                    }),
-                  ),
-                  builder: (context, futureSnapshot) {
-                    // Sort users by recent activity
-                    final sortedUsers = _sortUsersByRecent(users);
+                        // Update last message time in map
+                        if (hasLastMessage && mounted) {
+                          _userLastMessageTime[user.uid] = lastMessage.timestamp;
+                        }
 
-                    return ListView.builder(
-                      padding: const EdgeInsets.all(8),
-                      itemCount: sortedUsers.length,
-                      itemBuilder: (context, index) {
-                        final user = sortedUsers[index];
-                        final userColor = _getUserColor(user.uid);
-                        final hasRecentMessage = _userLastMessageTime.containsKey(user.uid);
-
-                        return StreamBuilder<Message?>(
-                          stream: chatService.getLastMessage(
-                            _currentUser!.uid,
-                            user.uid,
+                        return Card(
+                          margin: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
                           ),
-                          builder: (context, messageSnapshot) {
-                            final lastMessage = messageSnapshot.data;
-                            final hasLastMessage = lastMessage != null;
-
-                            // Update last message time in map
-                            if (hasLastMessage && mounted) {
-                              _userLastMessageTime[user.uid] = lastMessage.timestamp;
-                            }
-
-                            return Card(
-                              margin: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              elevation: 2,
-                              shadowColor: Colors.black12,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              color: Colors.white,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(16),
-                                onTap: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) => ChatScreen(
-                                        currentUser: _currentUser!,
-                                        otherUser: user,
-                                      ),
-                                    ),
-                                  );
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Row(
+                          elevation: 2,
+                          shadowColor: Colors.black12,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          color: Colors.white,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(16),
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => ChatScreen(
+                                    currentUser: _currentUser!,
+                                    otherUser: user,
+                                  ),
+                                ),
+                              );
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                children: [
+                                  // Avatar with color and online indicator
+                                  Stack(
                                     children: [
-                                      // Avatar with color
-                                      Stack(
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 30,
-                                            backgroundColor: userColor,
-                                            backgroundImage: user.photoURL != null
-                                                ? CachedNetworkImageProvider(user.photoURL!)
-                                                : null,
-                                            child: user.photoURL == null
-                                                ? Text(
-                                              _getAvatarLetter(user),
-                                              style: const TextStyle(
-                                                fontSize: 24,
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            )
-                                                : null,
-                                          ),
-                                          // Online indicator
-                                          if (user.isOnline == true)
-                                            Positioned(
-                                              bottom: 2,
-                                              right: 2,
-                                              child: Container(
-                                                width: 12,
-                                                height: 12,
-                                                decoration: BoxDecoration(
-                                                  color: Colors.green,
-                                                  shape: BoxShape.circle,
-                                                  border: Border.all(
-                                                    color: Colors.white,
-                                                    width: 2,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                        ],
+                                      SafeAvatar(
+                                        imageUrl: user.photoURL,
+                                        name: _getDisplayName(user),
+                                        radius: 30,
+                                        backgroundColor: userColor,
                                       ),
-                                      const SizedBox(width: 12),
-
-                                      // User info and last message
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            // Display name with recent indicator
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    _getDisplayName(user),
-                                                    style: TextStyle(
-                                                      fontSize: 16,
-                                                      fontWeight: hasRecentMessage
-                                                          ? FontWeight.w600
-                                                          : FontWeight.normal,
-                                                      color: hasRecentMessage
-                                                          ? Colors.black87
-                                                          : Colors.grey[700],
-                                                    ),
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                  ),
-                                                ),
-                                                if (hasRecentMessage)
-                                                  Container(
-                                                    margin: const EdgeInsets.only(left: 4),
-                                                    padding: const EdgeInsets.symmetric(
-                                                      horizontal: 6,
-                                                      vertical: 2,
-                                                    ),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.blue.withOpacity(0.1),
-                                                      borderRadius: BorderRadius.circular(10),
-                                                    ),
-                                                  ),
-                                              ],
+                                      // Online indicator
+                                      if (user.isOnline == true)
+                                        Positioned(
+                                          bottom: 2,
+                                          right: 2,
+                                          child: Container(
+                                            width: 12,
+                                            height: 12,
+                                            decoration: BoxDecoration(
+                                              color: Colors.green,
+                                              shape: BoxShape.circle,
+                                              border: Border.all(
+                                                color: Colors.white,
+                                                width: 2,
+                                              ),
                                             ),
-                                            const SizedBox(height: 4),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                  const SizedBox(width: 12),
 
-                                            // Last message preview
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    hasLastMessage
-                                                        ? _getMessagePreview(lastMessage, _currentUser!.uid)
-                                                        : 'Tap to start chatting',
-                                                    style: TextStyle(
-                                                      fontSize: 14,
-                                                      color: hasLastMessage
-                                                          ? Colors.grey[700]
-                                                          : Colors.grey[500],
-                                                      fontStyle: hasLastMessage
-                                                          ? FontStyle.normal
-                                                          : FontStyle.italic,
-                                                    ),
-                                                    maxLines: 1,
-                                                    overflow: TextOverflow.ellipsis,
-                                                  ),
+                                  // User info and last message
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        // Display name with recent indicator
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                _getDisplayName(user),
+                                                style: TextStyle(
+                                                  fontSize: 16,
+                                                  fontWeight: hasRecentMessage
+                                                      ? FontWeight.w600
+                                                      : FontWeight.normal,
+                                                  color: hasRecentMessage
+                                                      ? Colors.black87
+                                                      : Colors.grey[700],
                                                 ),
-                                              ],
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            if (hasRecentMessage)
+                                              Container(
+                                                margin: const EdgeInsets.only(left: 4),
+                                                padding: const EdgeInsets.symmetric(
+                                                  horizontal: 6,
+                                                  vertical: 2,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.blue.withOpacity(0.1),
+                                                  borderRadius: BorderRadius.circular(10),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+
+                                        // Last message preview
+                                        Row(
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                hasLastMessage
+                                                    ? _getMessagePreview(lastMessage, _currentUser!.uid)
+                                                    : 'Tap to start chatting',
+                                                style: TextStyle(
+                                                  fontSize: 14,
+                                                  color: hasLastMessage
+                                                      ? Colors.grey[700]
+                                                      : Colors.grey[500],
+                                                  fontStyle: hasLastMessage
+                                                      ? FontStyle.normal
+                                                      : FontStyle.italic,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
                                             ),
                                           ],
                                         ),
-                                      ),
+                                      ],
+                                    ),
+                                  ),
 
-                                      // Time and unread indicator
-                                      Column(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        crossAxisAlignment: CrossAxisAlignment.end,
-                                        children: [
-                                          if (hasLastMessage)
-                                            Text(
-                                              _formatMessageTime(lastMessage.timestamp),
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: hasRecentMessage
-                                                    ? Colors.blue
-                                                    : Colors.grey[500],
-                                                fontWeight: hasRecentMessage
-                                                    ? FontWeight.bold
-                                                    : FontWeight.normal,
-                                              ),
-                                            ),
-                                          const SizedBox(height: 4),
-                                        ],
-                                      ),
+                                  // Time and unread indicator
+                                  Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      if (hasLastMessage)
+                                        Text(
+                                          _formatMessageTime(lastMessage.timestamp),
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: hasRecentMessage
+                                                ? Colors.blue
+                                                : Colors.grey[500],
+                                            fontWeight: hasRecentMessage
+                                                ? FontWeight.bold
+                                                : FontWeight.normal,
+                                          ),
+                                        ),
+                                      const SizedBox(height: 4),
                                     ],
                                   ),
-                                ),
+                                ],
                               ),
-                            );
-                          },
+                            ),
+                          ),
                         );
                       },
                     );
@@ -669,5 +628,11 @@ class _UsersScreenState extends State<UsersScreen> {
         );
       },
     );
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 }

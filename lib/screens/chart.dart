@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../../services/chat_service.dart';
+import '../../widgets/safe_avatar.dart';
 import '../model/message_model.dart';
-import '../model/user_model.dart';
+import '../model/user_model.dart';  // Add this import
 
 class ChatScreen extends StatefulWidget {
   final AppUser currentUser;
@@ -61,7 +62,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // ============= SEND MESSAGE =============
   Future<void> _sendMessage() async {
     final text = _messageController.text.trim();
 
@@ -89,7 +89,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // ============= UI HELPER METHODS =============
   void _scrollToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
@@ -169,18 +168,11 @@ class _ChatScreenState extends State<ChatScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircleAvatar(
+              SafeAvatar(
+                imageUrl: widget.otherUser.photoURL,
+                name: _getDisplayName(widget.otherUser),
                 radius: 50,
                 backgroundColor: _getUserColor(widget.otherUser.uid),
-                backgroundImage: widget.otherUser.photoURL != null
-                    ? NetworkImage(widget.otherUser.photoURL!)
-                    : null,
-                child: widget.otherUser.photoURL == null
-                    ? Text(
-                  _getAvatarLetter(widget.otherUser),
-                  style: const TextStyle(fontSize: 40, color: Colors.white),
-                )
-                    : null,
               ),
               const SizedBox(height: 16),
               Text(
@@ -319,22 +311,11 @@ class _ChatScreenState extends State<ChatScreen> {
           if (!isMe && showAvatar)
             Padding(
               padding: const EdgeInsets.only(right: 8),
-              child: CircleAvatar(
+              child: SafeAvatar(
+                imageUrl: widget.otherUser.photoURL,
+                name: _getDisplayName(widget.otherUser),
                 radius: 18,
                 backgroundColor: _getUserColor(widget.otherUser.uid),
-                backgroundImage: widget.otherUser.photoURL != null
-                    ? NetworkImage(widget.otherUser.photoURL!)
-                    : null,
-                child: widget.otherUser.photoURL == null
-                    ? Text(
-                  _getAvatarLetter(widget.otherUser),
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
-                )
-                    : null,
               ),
             ),
           if (!isMe && !showAvatar) const SizedBox(width: 44), // Space for alignment
@@ -505,23 +486,13 @@ class _ChatScreenState extends State<ChatScreen> {
             // User avatar with online indicator
             Stack(
               children: [
-                CircleAvatar(
+                SafeAvatar(
+                  imageUrl: widget.otherUser.photoURL,
+                  name: _getDisplayName(widget.otherUser),
                   radius: 20,
                   backgroundColor: _getUserColor(widget.otherUser.uid),
-                  backgroundImage: widget.otherUser.photoURL != null
-                      ? NetworkImage(widget.otherUser.photoURL!)
-                      : null,
-                  child: widget.otherUser.photoURL == null
-                      ? Text(
-                    _getAvatarLetter(widget.otherUser),
-                    style: const TextStyle(
-                      fontSize: 18,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  )
-                      : null,
                 ),
+                // Online status indicator
                 Positioned(
                   bottom: 0,
                   right: 0,
@@ -574,6 +545,7 @@ class _ChatScreenState extends State<ChatScreen> {
         foregroundColor: Colors.white,
         elevation: 2,
 
+        // ============= APP BAR ACTIONS =============
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: Colors.white),
@@ -741,7 +713,6 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
-
   @override
   void dispose() {
     _messageController.dispose();

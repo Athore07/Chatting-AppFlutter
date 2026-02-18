@@ -44,6 +44,9 @@ dependencies {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+    lintOptions {
+            disable 'InvalidPackage'
+        }
 }
 
 flutter {

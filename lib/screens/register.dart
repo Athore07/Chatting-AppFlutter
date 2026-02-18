@@ -49,9 +49,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
       final name = _nameController.text.trim();
 
       await _authService.register(
-        email: email,
-        password: password,
-        name: name,
+        email,
+        password,
+        name,
       );
 
       if (!mounted) return;

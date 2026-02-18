@@ -1,411 +1,662 @@
-// ignore_for_file: unused_field
-import 'dart:io';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // needed for phone number input
+import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'login.dart';
+import 'dart:io';
+import '../../services/auth_service.dart';
+import '../model/user_model.dart';
 
 class ProfileScreen extends StatefulWidget {
-  final String userId;
-  const ProfileScreen({super.key, required this.userId});
+  const ProfileScreen({super.key});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseStorage _storage = FirebaseStorage.instance;
+  // Form controllers
+  final _formKey = GlobalKey<FormState>();
+  final _displayNameController = TextEditingController();
+  final _statusController = TextEditingController();
 
-  bool _isEditing = false;
-  bool _hasChanges = false;
+  // State variables
+  String? _photoURL;
+  File? _selectedImage;
+  bool _isLoading = true;
+  bool _isSaving = false;
+  String? _errorMessage;
+  AppUser? _user;
 
-  // ignore: unused_field
-  bool _isUploadingImage = false; // kept as requested
-  File? _selectedImage; // mobile
-  XFile? _webSelectedImage; // web
-
-  late TextEditingController _nameController;
-  late TextEditingController _bioController;
-  late TextEditingController _phoneController;
-  DateTime? _memberSinceDate;
-  Map<String, dynamic> _originalValues = {};
+  // Image picker
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController();
-    _bioController = TextEditingController();
-    _phoneController = TextEditingController();
+    _loadUserData();
   }
 
   @override
   void dispose() {
-    _nameController.dispose();
-    _bioController.dispose();
-    _phoneController.dispose();
+    _displayNameController.dispose();
+    _statusController.dispose();
     super.dispose();
   }
 
-  String _getInitial(String? name) {
-    if (name == null || name.trim().isEmpty) return "U";
-    return name.trim()[0].toUpperCase();
-  }
-
-  String _formatDate(Timestamp? timestamp) {
-    if (timestamp == null) return "Unknown";
-    final date = timestamp.toDate();
-    return "${date.day}/${date.month}/${date.year}";
-  }
-
-  void _startEditing(Map<String, dynamic> data) {
-    setState(() {
-      _isEditing = true;
-      _hasChanges = false;
-      _originalValues = {
-        "name": data['name'] ?? "",
-        "bio": data['bio'] ?? "",
-        "phoneNumber": data['phoneNumber'] ?? "",
-        "createdAt": data['createdAt'],
-      };
-      _nameController.text = _originalValues['name']!;
-      _bioController.text = _originalValues['bio']!;
-      _phoneController.text = _originalValues['phoneNumber']!;
-      _memberSinceDate = (data['createdAt'] as Timestamp?)?.toDate();
-    });
-  }
-
-  void _checkChanges() {
-    final changed = _nameController.text.trim() != _originalValues['name'] ||
-        _bioController.text.trim() != _originalValues['bio'] ||
-        _phoneController.text.trim() != _originalValues['phoneNumber'] ||
-        _memberSinceDate != (_originalValues['createdAt'] as Timestamp?)?.toDate();
-
-    if (_hasChanges != changed) {
-      setState(() {
-        _hasChanges = changed;
-      });
-    }
-  }
-
-  void _cancelEditing() {
-    setState(() {
-      _isEditing = false;
-      _hasChanges = false;
-      _nameController.text = _originalValues['name']!;
-      _bioController.text = _originalValues['bio']!;
-      _phoneController.text = _originalValues['phoneNumber']!;
-      _memberSinceDate = (_originalValues['createdAt'] as Timestamp?)?.toDate();
-      _selectedImage = null;
-      _webSelectedImage = null;
-    });
-  }
-
-  Future<void> _saveChanges() async {
-    Map<String, dynamic> updates = {};
-
-    if (_nameController.text.trim() != _originalValues['name']) {
-      updates['name'] = _nameController.text.trim();
-    }
-    if (_bioController.text.trim() != _originalValues['bio']) {
-      updates['bio'] = _bioController.text.trim();
-    }
-    if (_phoneController.text.trim() != _originalValues['phoneNumber']) {
-      updates['phoneNumber'] = _phoneController.text.trim();
-    }
-    if (_memberSinceDate != (_originalValues['createdAt'] as Timestamp?)?.toDate()) {
-      updates['createdAt'] = Timestamp.fromDate(_memberSinceDate!);
-    }
-
-    // Save uploaded profile picture
-    if (_selectedImage != null || _webSelectedImage != null) {
-      final url = await _uploadProfileImage();
-      if (url != null) {
-        updates['photoURL'] = url;
-        await _auth.currentUser?.updatePhotoURL(url);
-      }
-    }
-
-    if (updates.isNotEmpty) {
-      await _firestore.collection('users').doc(widget.userId).update(updates);
-      setState(() {
-        _isEditing = false;
-        _hasChanges = false;
-        _selectedImage = null;
-        _webSelectedImage = null;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Profile updated successfully")),
-      );
-    } else {
-      _cancelEditing();
-    }
-  }
-
-  Future<String?> _uploadProfileImage() async {
+  // Load current user data
+  Future<void> _loadUserData() async {
     try {
-      String fileName = 'profile_${widget.userId}_${DateTime.now().millisecondsSinceEpoch}';
-      Reference ref = _storage.ref().child('profile_pictures/$fileName');
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
 
-      UploadTask uploadTask;
-      if (kIsWeb && _webSelectedImage != null) {
-        uploadTask = ref.putData(await _webSelectedImage!.readAsBytes());
-      } else if (_selectedImage != null) {
-        uploadTask = ref.putFile(_selectedImage!);
-      } else {
-        return null;
+      final authService = Provider.of<AuthService>(context, listen: false);
+      final user = await authService.getCurrentUserData();
+
+      if (mounted) {
+        setState(() {
+          _user = user;
+          _displayNameController.text = user?.displayName ?? '';
+          _statusController.text = user?.status ?? 'Hey there! I am using Chat App';
+          _photoURL = user?.photoURL;
+          _isLoading = false;
+        });
       }
-
-      TaskSnapshot snapshot = await uploadTask;
-      return await snapshot.ref.getDownloadURL();
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error uploading image: $e')),
-      );
-      return null;
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to load user data: $e';
+          _isLoading = false;
+        });
+      }
     }
   }
 
+  // Pick image from gallery
   Future<void> _pickImage() async {
-    final picker = ImagePicker();
     try {
-      if (kIsWeb) {
-        final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-        if (pickedFile != null) {
-          setState(() {
-            _webSelectedImage = pickedFile;
-            _hasChanges = true;
-          });
-        }
-      } else {
-        final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-        if (pickedFile != null) {
-          setState(() {
-            _selectedImage = File(pickedFile.path);
-            _hasChanges = true;
-          });
-        }
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 75,
+      );
+
+      if (pickedFile != null) {
+        setState(() {
+          _selectedImage = File(pickedFile.path);
+        });
+
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Image selected successfully'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 1),
+          ),
+        );
       }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error picking image: $e')),
+        SnackBar(
+          content: Text('Failed to pick image: $e'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
 
-  Future<void> _selectDate() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _memberSinceDate ?? DateTime.now(),
-      firstDate: DateTime(2000),
-      lastDate: DateTime.now(),
-    );
-    if (picked != null && picked != _memberSinceDate) {
-      setState(() {
-        _memberSinceDate = picked;
-        _checkChanges();
-      });
+  // Take photo with camera
+  Future<void> _takePhoto() async {
+    try {
+      final XFile? pickedFile = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 75,
+      );
+
+      if (pickedFile != null) {
+        setState(() {
+          _selectedImage = File(pickedFile.path);
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Photo taken successfully'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to take photo: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
   }
 
-  InputDecoration _modernInput(String label) {
-    return InputDecoration(
-      labelText: label,
-      filled: true,
-      fillColor: Colors.grey.shade100,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(15),
-        borderSide: BorderSide.none,
+  // Remove profile picture
+  void _removeImage() {
+    setState(() {
+      _selectedImage = null;
+      _photoURL = null;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Profile picture removed'),
+        backgroundColor: Colors.orange,
+        duration: Duration(seconds: 1),
       ),
     );
   }
 
-  Widget _infoRow(IconData icon, String title, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: Colors.grey[700]),
-          const SizedBox(width: 10),
-          Text(title),
-          const Spacer(),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
-        ],
+  // Show image picker options
+  void _showImagePickerOptions() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder: (BuildContext context) {
+        return SafeArea(
+          child: Wrap(
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Center(
+                  child: Text(
+                    'Profile Picture',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_library, color: Colors.blue),
+                title: const Text('Choose from Gallery'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.camera_alt, color: Colors.blue),
+                title: const Text('Take Photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _takePhoto();
+                },
+              ),
+              if (_photoURL != null || _selectedImage != null)
+                ListTile(
+                  leading: const Icon(Icons.remove_circle, color: Colors.red),
+                  title: const Text('Remove Picture'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _removeImage();
+                  },
+                ),
+              ListTile(
+                leading: const Icon(Icons.cancel, color: Colors.grey),
+                title: const Text('Cancel'),
+                onTap: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
-  Widget _editableDateRow(IconData icon, String title) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: InkWell(
-        onTap: _selectDate,
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: Colors.grey[700]),
-            const SizedBox(width: 10),
-            Text(title),
-            const Spacer(),
-            Text(
-              _memberSinceDate != null
-                  ? "${_memberSinceDate!.day}/${_memberSinceDate!.month}/${_memberSinceDate!.year}"
-                  : "Select date",
-              style: const TextStyle(fontWeight: FontWeight.w500),
+  // Update profile
+  Future<void> _updateProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      final authService = Provider.of<AuthService>(context, listen: false);
+
+      // In a real app, you would upload the image to Firebase Storage here
+      // For now, we'll just update the display name and status
+      final result = await authService.updateProfile(
+        displayName: _displayNameController.text.trim(),
+        photoURL: _photoURL, // This would be the uploaded image URL
+        status: _statusController.text.trim(),
+      );
+
+      if (result == 'success' && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Profile updated successfully'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        // Return true to indicate success
+        Navigator.pop(context, true);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Update failed: $e'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  // Show logout confirmation
+  Future<void> _showLogoutConfirmation() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Logout'),
+          content: const Text('Are you sure you want to logout?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
             ),
-            const SizedBox(width: 8),
-            const Icon(Icons.arrow_drop_down, color: Colors.grey),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Logout'),
+            ),
           ],
-        ),
-      ),
+        );
+      },
     );
+
+    if (confirm == true && mounted) {
+      final authService = Provider.of<AuthService>(context, listen: false);
+      await authService.logout();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final isOwnProfile = _auth.currentUser?.uid == widget.userId;
+    // Loading state
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+
+    // Error state
+    if (_errorMessage != null) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Edit Profile'),
+          backgroundColor: Colors.blue,
+          foregroundColor: Colors.white,
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  size: 80,
+                  color: Colors.red,
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  _errorMessage!,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    color: Colors.red,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  onPressed: _loadUserData,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(200, 45),
+                  ),
+                  child: const Text('Retry'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditing ? 'Edit Profile' : 'Profile'),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        iconTheme: const IconThemeData(color: Colors.black87),
+        title: const Text('Edit Profile'),
+        backgroundColor: Colors.blue,
+        foregroundColor: Colors.white,
+        elevation: 2,
         actions: [
-          if (isOwnProfile && !_isEditing)
-            IconButton(
-              icon: const Icon(Icons.edit),
-              onPressed: () {
-                _firestore.collection('users').doc(widget.userId).get().then((doc) {
-                  if (doc.exists) _startEditing(doc.data() as Map<String, dynamic>);
-                });
-              },
+          // Save button
+          TextButton(
+            onPressed: _isSaving ? null : _updateProfile,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white,
             ),
-          if (_isEditing)
-            Row(
-              children: [
-                TextButton(onPressed: _cancelEditing, child: const Text('Cancel')),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: _hasChanges ? _saveChanges : null,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: _hasChanges ? Colors.blue : Colors.grey[300],
-                    foregroundColor: _hasChanges ? Colors.white : Colors.grey[600],
-                  ),
-                  child: const Text('Save'),
-                ),
-                const SizedBox(width: 16),
-              ],
+            child: _isSaving
+                ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+              ),
+            )
+                : const Text(
+              'Save',
+              style: TextStyle(fontSize: 16),
             ),
+          ),
         ],
       ),
-      backgroundColor: const Color(0xFFF5F7FA),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: _firestore.collection('users').doc(widget.userId).snapshots(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData || !snapshot.data!.exists) return const Center(child: Text('User not found'));
-          final data = snapshot.data!.data() as Map<String, dynamic>;
-
-          return SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              children: [
-                // Profile Card
-                Container(
-                  padding: const EdgeInsets.all(30),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(25),
-                    boxShadow: [BoxShadow(blurRadius: 15, color: Colors.black.withOpacity(0.05), offset: const Offset(0, 8))],
-                  ),
-                  child: Column(
-                    children: [
-                      Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          CircleAvatar(
-                            radius: 60,
-                            backgroundColor: Colors.blue.shade100,
-                            backgroundImage: kIsWeb
-                                ? (_webSelectedImage != null
-                                    ? NetworkImage(_webSelectedImage!.path)
-                                    : (data['photoURL'] != null && data['photoURL'].toString().isNotEmpty
-                                        ? NetworkImage(data['photoURL'])
-                                        : null))
-                                : (_selectedImage != null
-                                    ? FileImage(_selectedImage!) as ImageProvider
-                                    : (data['photoURL'] != null && data['photoURL'].toString().isNotEmpty
-                                        ? NetworkImage(data['photoURL'])
-                                        : null)),
-                            child: (_selectedImage == null && _webSelectedImage == null && (data['photoURL'] == null || data['photoURL'].toString().isEmpty))
-                                ? Text(_getInitial(_isEditing ? _nameController.text : data['name']),
-                                    style: const TextStyle(fontSize: 45, fontWeight: FontWeight.bold, color: Colors.blue))
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Profile Picture Section
+              Center(
+                child: Column(
+                  children: [
+                    Stack(
+                      children: [
+                        // Profile image
+                        Container(
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.blue,
+                              width: 3,
+                            ),
+                          ),
+                          child: CircleAvatar(
+                            radius: 70,
+                            backgroundColor: Colors.blue[100],
+                            backgroundImage: _selectedImage != null
+                                ? FileImage(_selectedImage!)
+                                : (_photoURL != null
+                                ? NetworkImage(_photoURL!)
+                                : null) as ImageProvider?,
+                            child: _selectedImage == null && _photoURL == null
+                                ? Text(
+                              _user?.displayName.isNotEmpty == true
+                                  ? _user!.displayName[0].toUpperCase()
+                                  : '?',
+                              style: const TextStyle(
+                                fontSize: 50,
+                                color: Colors.blue,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            )
                                 : null,
                           ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: isOwnProfile
-                                ? GestureDetector(
-                                    onTap: _pickImage,
-                                    child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle),
-                                      child: const Icon(Icons.edit, color: Colors.white, size: 18),
-                                    ),
-                                  )
-                                : const SizedBox.shrink(),
+                        ),
+
+                        // Camera button
+                        Positioned(
+                          bottom: 5,
+                          right: 5,
+                          child: GestureDetector(
+                            onTap: _showImagePickerOptions,
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: const BoxDecoration(
+                                color: Colors.blue,
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.camera_alt,
+                                color: Colors.white,
+                                size: 25,
+                              ),
+                            ),
                           ),
-                        ],
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: 8),
+
+                    // Change photo text
+                    TextButton(
+                      onPressed: _showImagePickerOptions,
+                      child: const Text(
+                        'Change Profile Photo',
+                        style: TextStyle(
+                          color: Colors.blue,
+                          fontSize: 14,
+                        ),
                       ),
-                      const SizedBox(height: 16),
-                      _isEditing
-                          ? TextField(controller: _nameController, onChanged: (_) => _checkChanges(), decoration: _modernInput("Name"))
-                          : Text(data['name'] ?? "No Name", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      Text(data['email'] ?? "", style: const TextStyle(color: Colors.grey)),
-                      const SizedBox(height: 5),
-                      Text(data['isOnline'] == true ? "Online" : "Last seen ${_formatDate(data['lastSeen'])}",
-                          style: TextStyle(color: data['isOnline'] == true ? Colors.green : Colors.grey, fontSize: 13)),
-                      const SizedBox(height: 15),
-                      _isEditing
-                          ? TextField(controller: _bioController, maxLines: 2, onChanged: (_) => _checkChanges(), decoration: _modernInput("Bio"))
-                          : Text(data['bio']?.isNotEmpty == true ? data['bio'] : "Add bio", style: const TextStyle(color: Colors.blue)),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                // Info Card
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-                  child: Column(
+              ),
+
+              const SizedBox(height: 32),
+
+              // Display Name Field
+              const Text(
+                'Display Name',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _displayNameController,
+                decoration: InputDecoration(
+                  hintText: 'Enter your display name',
+                  prefixIcon: const Icon(Icons.person_outline, color: Colors.blue),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter your name';
+                  }
+                  if (value.length < 2) {
+                    return 'Name must be at least 2 characters';
+                  }
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 20),
+
+              // Status Field
+              const Text(
+                'Status',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _statusController,
+                decoration: InputDecoration(
+                  hintText: 'What\'s on your mind?',
+                  prefixIcon: const Icon(Icons.emoji_emotions_outlined, color: Colors.blue),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[50],
+                ),
+                maxLines: 2,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter a status';
+                  }
+                  return null;
+                },
+              ),
+
+              const SizedBox(height: 20),
+
+              // Email Field (read-only)
+              const Text(
+                'Email Address',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.grey[300]!),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.email_outlined, color: Colors.blue, size: 20),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _user?.email ?? 'No email',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                    const Icon(Icons.lock_outline, color: Colors.grey, size: 16),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Member Since
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.blue[50],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.calendar_today, color: Colors.blue, size: 20),
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Member Since',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _user?.lastSeen != null
+                              ? '${_user!.lastSeen.day}/${_user!.lastSeen.month}/${_user!.lastSeen.year}'
+                              : 'Recently',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              // Logout Button
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: OutlinedButton(
+                  onPressed: _showLogoutConfirmation,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    side: const BorderSide(color: Colors.red),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      _isEditing
-                          ? _editableDateRow(Icons.calendar_today, "Member since")
-                          : _infoRow(Icons.calendar_today, "Member since", _formatDate(data['createdAt'])),
-                      const Divider(),
-                      _isEditing
-                          ? TextField(
-                              controller: _phoneController,
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                              onChanged: (_) => _checkChanges(),
-                              decoration: _modernInput("Phone Number"),
-                            )
-                          : _infoRow(Icons.phone, "Phone", data['phoneNumber']?.isNotEmpty == true ? data['phoneNumber'] : "Not provided"),
+                      Icon(Icons.logout, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Logout',
+                        style: TextStyle(fontSize: 16),
+                      ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          );
-        },
+              ),
+
+              const SizedBox(height: 20),
+
+              // App Version
+              const Center(
+                child: Text(
+                  'Version 1.0.0',
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

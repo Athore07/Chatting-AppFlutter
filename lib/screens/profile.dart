@@ -1,7 +1,12 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+// ignore_for_file: unused_field
+import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:flutter/services.dart'; // needed for phone number input
+import 'package:image_picker/image_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'login.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -15,16 +20,20 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseStorage _storage = FirebaseStorage.instance;
 
   bool _isEditing = false;
   bool _hasChanges = false;
 
+  // ignore: unused_field
+  bool _isUploadingImage = false; // kept as requested
+  File? _selectedImage; // mobile
+  XFile? _webSelectedImage; // web
+
   late TextEditingController _nameController;
   late TextEditingController _bioController;
   late TextEditingController _phoneController;
-  DateTime? _memberSinceDate; // Add this for member since date
-
-  // store original values
+  DateTime? _memberSinceDate;
   Map<String, dynamic> _originalValues = {};
 
   @override
@@ -58,15 +67,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       _isEditing = true;
       _hasChanges = false;
-
-      // save original values
       _originalValues = {
         "name": data['name'] ?? "",
         "bio": data['bio'] ?? "",
         "phoneNumber": data['phoneNumber'] ?? "",
         "createdAt": data['createdAt'],
       };
-
       _nameController.text = _originalValues['name']!;
       _bioController.text = _originalValues['bio']!;
       _phoneController.text = _originalValues['phoneNumber']!;
@@ -91,21 +97,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {
       _isEditing = false;
       _hasChanges = false;
-
-      // revert to original values
       _nameController.text = _originalValues['name']!;
       _bioController.text = _originalValues['bio']!;
       _phoneController.text = _originalValues['phoneNumber']!;
       _memberSinceDate = (_originalValues['createdAt'] as Timestamp?)?.toDate();
+      _selectedImage = null;
+      _webSelectedImage = null;
     });
   }
 
   Future<void> _saveChanges() async {
-    if (!_hasChanges) {
-      _cancelEditing(); // if nothing changed, just cancel
-      return;
-    }
-
     Map<String, dynamic> updates = {};
 
     if (_nameController.text.trim() != _originalValues['name']) {
@@ -121,19 +122,80 @@ class _ProfileScreenState extends State<ProfileScreen> {
       updates['createdAt'] = Timestamp.fromDate(_memberSinceDate!);
     }
 
+    // Save uploaded profile picture
+    if (_selectedImage != null || _webSelectedImage != null) {
+      final url = await _uploadProfileImage();
+      if (url != null) {
+        updates['photoURL'] = url;
+        await _auth.currentUser?.updatePhotoURL(url);
+      }
+    }
+
     if (updates.isNotEmpty) {
       await _firestore.collection('users').doc(widget.userId).update(updates);
-
       setState(() {
         _isEditing = false;
         _hasChanges = false;
+        _selectedImage = null;
+        _webSelectedImage = null;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text("Profile updated successfully")),
       );
     } else {
-      _cancelEditing(); // no updates, just cancel
+      _cancelEditing();
+    }
+  }
+
+  Future<String?> _uploadProfileImage() async {
+    try {
+      String fileName = 'profile_${widget.userId}_${DateTime.now().millisecondsSinceEpoch}';
+      Reference ref = _storage.ref().child('profile_pictures/$fileName');
+
+      UploadTask uploadTask;
+      if (kIsWeb && _webSelectedImage != null) {
+        uploadTask = ref.putData(await _webSelectedImage!.readAsBytes());
+      } else if (_selectedImage != null) {
+        uploadTask = ref.putFile(_selectedImage!);
+      } else {
+        return null;
+      }
+
+      TaskSnapshot snapshot = await uploadTask;
+      return await snapshot.ref.getDownloadURL();
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error uploading image: $e')),
+      );
+      return null;
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    try {
+      if (kIsWeb) {
+        final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+        if (pickedFile != null) {
+          setState(() {
+            _webSelectedImage = pickedFile;
+            _hasChanges = true;
+          });
+        }
+      } else {
+        final pickedFile = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+        if (pickedFile != null) {
+          setState(() {
+            _selectedImage = File(pickedFile.path);
+            _hasChanges = true;
+          });
+        }
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error picking image: $e')),
+      );
     }
   }
 
@@ -173,10 +235,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(width: 10),
           Text(title),
           const Spacer(),
-          Text(
-            value,
-            style: const TextStyle(fontWeight: FontWeight.w500),
-          ),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -213,10 +272,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          _isEditing ? 'Edit Profile' : 'Profile',
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 20),
-        ),
+        title: Text(_isEditing ? 'Edit Profile' : 'Profile'),
         backgroundColor: Colors.white,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.black87),
@@ -225,44 +281,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
             IconButton(
               icon: const Icon(Icons.edit),
               onPressed: () {
-                // Get current data and start editing
                 _firestore.collection('users').doc(widget.userId).get().then((doc) {
-                  if (doc.exists) {
-                    _startEditing(doc.data() as Map<String, dynamic>);
-                  }
+                  if (doc.exists) _startEditing(doc.data() as Map<String, dynamic>);
                 });
               },
             ),
-          if (_isEditing) ...[
-            TextButton(
-              onPressed: _cancelEditing,
-              child: const Text('Cancel'),
+          if (_isEditing)
+            Row(
+              children: [
+                TextButton(onPressed: _cancelEditing, child: const Text('Cancel')),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: _hasChanges ? _saveChanges : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _hasChanges ? Colors.blue : Colors.grey[300],
+                    foregroundColor: _hasChanges ? Colors.white : Colors.grey[600],
+                  ),
+                  child: const Text('Save'),
+                ),
+                const SizedBox(width: 16),
+              ],
             ),
-            const SizedBox(width: 8),
-            ElevatedButton(
-              onPressed: _hasChanges ? _saveChanges : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _hasChanges ? Colors.blue : Colors.grey[300],
-                foregroundColor: _hasChanges ? Colors.white : Colors.grey[600],
-              ),
-              child: const Text('Save'),
-            ),
-            const SizedBox(width: 16),
-          ],
         ],
       ),
       backgroundColor: const Color(0xFFF5F7FA),
       body: StreamBuilder<DocumentSnapshot>(
         stream: _firestore.collection('users').doc(widget.userId).snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(child: Text('User not found'));
-          }
-
+          if (!snapshot.hasData || !snapshot.data!.exists) return const Center(child: Text('User not found'));
           final data = snapshot.data!.data() as Map<String, dynamic>;
 
           return SingleChildScrollView(
@@ -275,269 +321,92 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(25),
-                    boxShadow: [
-                      BoxShadow(
-                        blurRadius: 15,
-                        color: Colors.black.withOpacity(0.05),
-                        offset: const Offset(0, 8),
-                      )
-                    ],
+                    boxShadow: [BoxShadow(blurRadius: 15, color: Colors.black.withOpacity(0.05), offset: const Offset(0, 8))],
                   ),
                   child: Column(
                     children: [
                       Stack(
                         alignment: Alignment.center,
                         children: [
-                          // Avatar
                           CircleAvatar(
                             radius: 60,
                             backgroundColor: Colors.blue.shade100,
-                            backgroundImage: (data['photoURL'] != null &&
-                                data['photoURL'].toString().isNotEmpty)
-                                ? NetworkImage(data['photoURL'])
-                                : null,
-                            child: (data['photoURL'] == null ||
-                                data['photoURL'].toString().isEmpty)
-                                ? Text(
-                              _getInitial(_isEditing
-                                  ? _nameController.text
-                                  : data['name']),
-                              style: const TextStyle(
-                                fontSize: 45,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.blue,
-                              ),
-                            )
+                            backgroundImage: kIsWeb
+                                ? (_webSelectedImage != null
+                                    ? NetworkImage(_webSelectedImage!.path)
+                                    : (data['photoURL'] != null && data['photoURL'].toString().isNotEmpty
+                                        ? NetworkImage(data['photoURL'])
+                                        : null))
+                                : (_selectedImage != null
+                                    ? FileImage(_selectedImage!) as ImageProvider
+                                    : (data['photoURL'] != null && data['photoURL'].toString().isNotEmpty
+                                        ? NetworkImage(data['photoURL'])
+                                        : null)),
+                            child: (_selectedImage == null && _webSelectedImage == null && (data['photoURL'] == null || data['photoURL'].toString().isEmpty))
+                                ? Text(_getInitial(_isEditing ? _nameController.text : data['name']),
+                                    style: const TextStyle(fontSize: 45, fontWeight: FontWeight.bold, color: Colors.blue))
                                 : null,
                           ),
-                          // Online indicator
                           Positioned(
-                            bottom: 8,
-                            left: 8,
-                            child: Container(
-                              width: 18,
-                              height: 18,
-                              decoration: BoxDecoration(
-                                color: data['isOnline'] == true
-                                    ? Colors.green
-                                    : Colors.grey,
-                                shape: BoxShape.circle,
-                                border:
-                                Border.all(color: Colors.white, width: 2),
-                              ),
-                            ),
+                            bottom: 0,
+                            right: 0,
+                            child: isOwnProfile
+                                ? GestureDetector(
+                                    onTap: _pickImage,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: const BoxDecoration(color: Colors.blue, shape: BoxShape.circle),
+                                      child: const Icon(Icons.edit, color: Colors.white, size: 18),
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
                           ),
-                          // Edit icon on avatar
-                          if (isOwnProfile && !_isEditing)
-                            Positioned(
-                              bottom: 0,
-                              right: 0,
-                              child: GestureDetector(
-                                onTap: () {
-                                  _startEditing(data);
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: const BoxDecoration(
-                                    color: Colors.blue,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: const Icon(
-                                    Icons.edit,
-                                    color: Colors.white,
-                                    size: 18,
-                                  ),
-                                ),
-                              ),
-                            ),
                         ],
                       ),
                       const SizedBox(height: 16),
-
-                      // Name
                       _isEditing
-                          ? TextField(
-                        controller: _nameController,
-                        onChanged: (_) => _checkChanges(),
-                        decoration: _modernInput("Name"),
-                      )
-                          : Text(
-                        data['name'] ?? "No Name",
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                          ? TextField(controller: _nameController, onChanged: (_) => _checkChanges(), decoration: _modernInput("Name"))
+                          : Text(data['name'] ?? "No Name", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
-
-                      // Email
-                      Text(
-                        data['email'] ?? "",
-                        style: const TextStyle(color: Colors.grey),
-                      ),
+                      Text(data['email'] ?? "", style: const TextStyle(color: Colors.grey)),
                       const SizedBox(height: 5),
-
-                      // Online status
-                      Text(
-                        data['isOnline'] == true
-                            ? "Online"
-                            : "Last seen ${_formatDate(data['lastSeen'])}",
-                        style: TextStyle(
-                          color: data['isOnline'] == true
-                              ? Colors.green
-                              : Colors.grey,
-                          fontSize: 13,
-                        ),
-                      ),
+                      Text(data['isOnline'] == true ? "Online" : "Last seen ${_formatDate(data['lastSeen'])}",
+                          style: TextStyle(color: data['isOnline'] == true ? Colors.green : Colors.grey, fontSize: 13)),
                       const SizedBox(height: 15),
-
-                      // Bio
                       _isEditing
-                          ? TextField(
-                        controller: _bioController,
-                        maxLines: 2,
-                        onChanged: (_) => _checkChanges(),
-                        decoration: _modernInput("Bio"),
-                      )
-                          : Text(
-                        data['bio']?.isNotEmpty == true
-                            ? data['bio']
-                            : "Add bio",
-                        style: const TextStyle(color: Colors.blue),
-                      ),
+                          ? TextField(controller: _bioController, maxLines: 2, onChanged: (_) => _checkChanges(), decoration: _modernInput("Bio"))
+                          : Text(data['bio']?.isNotEmpty == true ? data['bio'] : "Add bio", style: const TextStyle(color: Colors.blue)),
                     ],
                   ),
                 ),
-
                 const SizedBox(height: 16),
-
                 // Info Card
                 Container(
                   padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
+                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
                   child: Column(
                     children: [
                       _isEditing
                           ? _editableDateRow(Icons.calendar_today, "Member since")
-                          : _infoRow(Icons.calendar_today, "Member since",
-                          _formatDate(data['createdAt'])),
+                          : _infoRow(Icons.calendar_today, "Member since", _formatDate(data['createdAt'])),
                       const Divider(),
                       _isEditing
                           ? TextField(
-                        controller: _phoneController,
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly
-                        ],
-                        onChanged: (_) => _checkChanges(),
-                        decoration: _modernInput("Phone Number"),
-                      )
-                          : _infoRow(
-                        Icons.phone,
-                        "Phone",
-                        data['phoneNumber']?.isNotEmpty == true
-                            ? data['phoneNumber']
-                            : "Not provided",
-                      ),
+                              controller: _phoneController,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                              onChanged: (_) => _checkChanges(),
+                              decoration: _modernInput("Phone Number"),
+                            )
+                          : _infoRow(Icons.phone, "Phone", data['phoneNumber']?.isNotEmpty == true ? data['phoneNumber'] : "Not provided"),
                     ],
                   ),
                 ),
-
-                const SizedBox(height: 20),
-
-                // Delete Account Button (only for current user)
-                if (isOwnProfile && !_isEditing)
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: _showDeleteConfirmation,
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('Delete Account'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red[400],
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                    ),
-                  ),
               ],
             ),
           );
         },
       ),
     );
-  }
-
-  void _showDeleteConfirmation() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Account?'),
-        content: const Text(
-          'This action will permanently delete your account and all associated data. This cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _deleteAccount();
-            },
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: Colors.red),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _deleteAccount() async {
-    try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
-      );
-
-      final currentUser = _auth.currentUser;
-      if (currentUser == null) return;
-
-      // Delete user document from Firestore
-      await _firestore.collection('users').doc(currentUser.uid).delete();
-
-      // Delete user from Firebase Auth
-      await currentUser.delete();
-
-      // Sign out
-      await _auth.signOut();
-
-      if (mounted) {
-        Navigator.pop(context); // Close loading dialog
-
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const LoginScreen()),
-              (route) => false,
-        );
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Account deleted successfully.')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error deleting account: $e')),
-        );
-      }
-    }
   }
 }

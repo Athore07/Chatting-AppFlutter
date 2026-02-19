@@ -134,11 +134,11 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
 
       if (_notificationsEnabled) {
         if (_currentUser != null) {
-          await notificationService.subscribeToUser(_currentUser!.uid);
+          await notificationService.subscribeToTopic(_currentUser!.uid);
         }
       } else {
         if (_currentUser != null) {
-          await notificationService.unsubscribeFromUser(_currentUser!.uid);
+          await notificationService.unsubscribeFromTopic(_currentUser!.uid);
         }
       }
 

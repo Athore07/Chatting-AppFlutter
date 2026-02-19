@@ -37,7 +37,7 @@
 
 ## 👨‍👩‍👧‍👦 Project participants
 
-| #  | 👤 First Name | 🧾 Last Name        |
+| #  | 👤 First Name | 🧾 Last Name        |username 
 |----|--------------|--------------------|
 | 1  | Antony       | Nestory            |
 | 2  | Godfrey      | Mahega             |
@@ -46,7 +46,7 @@
 | 5  | Said         | Athuman            |
 | 6  | Bahati       | Msafiri            |
 | 7  | Barikieli    | Manase             |
-| 8  | Waziri       | Fadhili            |
+| 8  | Waziri       | Fadhili            |WaziriG
 | 9  | Lubigisa     | William            |
 | 10 | Joseph       | Evarist            |
 | 11 | Baraka       | Nindwa             |

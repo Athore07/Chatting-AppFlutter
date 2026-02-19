@@ -45,7 +45,7 @@
 | 4  | Pascal       | Mboya         |          |
 | 5  | Said         | Athuman       |          |
 | 6  | Bahati       | Msafiri       |          |
-| 7  | Barikieli    | Manase        | BARIKIELI| NIT/BIT/2023/2213
+| 7  | Barikieli    | Manase        | barikieli| NIT/BIT/2023/2213
 | 8  | Waziri       | Fadhili       | WaziriG  |NIT/BIT/2023/2161
 | 9  | Lubigisa     | William       |          |
 | 10 | Joseph       | Evarist       |          |

@@ -37,22 +37,22 @@
 
 ## 👨‍👩‍👧‍👦 Project participants
 
-| #  | 👤 First Name | 🧾 Last Name        |username 
-|----|--------------|--------------------|
-| 1  | Antony       | Nestory            |
-| 2  | Godfrey      | Mahega             |
-| 3  | Rajabu       | Mohamedi           |
-| 4  | Pascal       | Mboya              |
-| 5  | Said         | Athuman            |
-| 6  | Bahati       | Msafiri            |
-| 7  | Barikieli    | Manase             |
-| 8  | Waziri       | Fadhili            |WaziriG
-| 9  | Lubigisa     | William            |
-| 10 | Joseph       | Evarist            |
-| 11 | Baraka       | Nindwa             |
-| 12 | Oshipay      | Loy                |
-| 13 | Nehemia      | Mwajombe           |
-| 14 | Isack M.     | Sebastian          |
-| 15 | Joyce        | Msinga             |
-| 16 | Jueria       | Makweta            |
+| #  | 👤 First Name | 🧾 Last Name username   |reg no
+|----|--------------|---------------|          |
+| 1  | Antony       | Nestory       |          |
+| 2  | Godfrey      | Mahega        |          |
+| 3  | Rajabu       | Mohamedi      |          |
+| 4  | Pascal       | Mboya         |          |
+| 5  | Said         | Athuman       |          |
+| 6  | Bahati       | Msafiri       |          |
+| 7  | Barikieli    | Manase        | BARIKIELI| NIT/BIT/2023/2213
+| 8  | Waziri       | Fadhili       | WaziriG  |
+| 9  | Lubigisa     | William       |          |
+| 10 | Joseph       | Evarist       |          |
+| 11 | Baraka       | Nindwa        |          |
+| 12 | Oshipay      | Loy           |          |
+| 13 | Nehemia      | Mwajombe      |          |
+| 14 | Isack M.     | Sebastian     |          |
+| 15 | Joyce        | Msinga        |          |
+| 16 | Jueria       | Makweta       |          |
 |

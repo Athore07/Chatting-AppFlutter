@@ -40,7 +40,7 @@
 | #  | 👤 First Name | 🧾 Last Name username   |reg no
 |----|--------------|---------------|          |
 | 1  | Antony       | Nestory       |          |
-| 2  | Godfrey      | Mahega        |          |
+| 2  | Godfrey      | Mahega @Nyujiboe99 NIT/BIT/2023/2262       |          |
 | 3  | Rajabu       | Mohamedi      |          |
 | 4  | Pascal       | Mboya         |          |
 | 5  | Said         | Athuman       |          |

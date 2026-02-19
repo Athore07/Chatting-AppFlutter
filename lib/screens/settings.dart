@@ -237,8 +237,8 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
   void _showAboutDialog() {
     showAboutDialog(
       context: context,
-      applicationName: 'Firebase Chat',
-      applicationVersion: 'Version 1.0.0',
+      applicationName: 'Chat App',
+      applicationVersion: 'Version 1.1.5',
       applicationIcon: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
@@ -482,7 +482,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 30),
             _buildPasswordField(oldController, 'Current Password', Icons.lock_outline),
             const SizedBox(height: 12),
             _buildPasswordField(newController, 'New Password', Icons.lock_reset),
@@ -1674,7 +1674,7 @@ class _SettingsScreenState extends State<SettingsScreen> with SingleTickerProvid
                   _buildModernTile(
                     icon: Icons.info_outline,
                     title: 'About',
-                    subtitle: 'Version 1.0.0',
+                    subtitle: 'Version 1.1.5',
                     gradient: const [Color(0xFF6B8CFF), Color(0xFFB56BFF)],
                     onTap: _showAboutDialog,
                   ),

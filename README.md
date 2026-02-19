@@ -47,7 +47,7 @@
 | 6  | Bahati       | Msafiri       |Bahatimsafiri|NIT/BIT/2023/2276
 | 7  | Barikieli    | Manase        | barikieli| NIT/BIT/2023/2213
 | 8  | Waziri       | Fadhili       | WaziriG  |NIT/BIT/2023/2161
-| 9  | Lubigisa     | William       |          |
+| 9  | Lubigisa     | William       |kahuha-jr|NIT/BIT/2023/2255
 | 10 | Joseph       | Evarist       |kingsylver01|NIT/BIT/2023/2325
 | 11 | Baraka       | Nindwa        |barakanidwa|NIT/BIT/2023/2267
 | 12 | Oshipay      | Loy           |          |

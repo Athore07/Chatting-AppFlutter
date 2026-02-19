@@ -22,6 +22,24 @@
 |-------------|-------------|-------------|
 | 🔐 Secure Login | 👥 View Users | 💬 Real-time Chat |
 
+##App screenshots
+---
+- **Register screen**
+  ---
+  <img width="280" height="460" alt="Screenshot 2026-02-19 141657" src="https://github.com/user-attachments/assets/f8e7629d-00ab-4e7f-8ad0-5ab7a66735bf" />
+
+- **Login screen**
+  ---
+  <img width="280" height="460" alt="Screenshot 2026-02-19 141605" src="https://github.com/user-attachments/assets/336c9acb-a044-4bee-b83f-5a2e7bfc8cdc" />
+
+- **Users screen**
+  ---
+  <img width="280" height="460" alt="Screenshot 2026-02-19 141828" src="https://github.com/user-attachments/assets/4a7ffc3a-ee99-4950-ad85-bedc6bb0f937" />
+
+- **Chat screen**
+  ---
+  <img width="280" height="460" alt="Screenshot 2026-02-19 142005" src="https://github.com/user-attachments/assets/8bc80d71-f385-4853-b21e-dec04e2dfed7" />
+
 ---
 
 ## 🛠️ Built With
@@ -50,7 +68,7 @@
 | 9  | Lubigisa     | William       |Kahuha-jr       |NIT/BIT/2023/2255   |
 | 10 | Joseph       | Evarist       |kingsylver01    |NIT/BIT/2023/2325   |
 | 11 | Baraka       | Nindwa        |barakanidwa     |NIT/BIT/2023/2267   |
-| 12 | Oshipay      | Loy           |                |
+| 12 | Oshipay      | Loy           |oshipay123      |NIT/BIT/2023/2362   |
 | 13 | Nehemia      | Mwajombe      |malume1738      | NIT/BIT/2023/2140  |
 | 14 | Isack M.     | Sebastian     |isacksebastian  |NIT/BIT/2023/2379   |
 | 15 | Joyce        | Msinga        | joycegdfrey226 |NIT/BIT/2022/1781   |

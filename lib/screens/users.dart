@@ -439,13 +439,13 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
         child: CustomScrollView(
           physics: const BouncingScrollPhysics(),
           slivers: [
-            // Modern App Bar
+            // Reduced App Bar with first character only
             SliverAppBar(
-              expandedHeight: 120,
+              expandedHeight: 80, // Reduced from 120
               floating: true,
               pinned: true,
               flexibleSpace: FlexibleSpaceBar(
-                titlePadding: const EdgeInsets.only(left: 20, bottom: 16),
+                titlePadding: const EdgeInsets.only(left: 20, bottom: 12), // Reduced bottom padding
                 title: Row(
                   children: [
                     Container(
@@ -461,15 +461,17 @@ class _UsersScreenState extends State<UsersScreen> with SingleTickerProviderStat
                       child: SafeAvatar(
                         imageUrl: _currentUser!.photoURL,
                         name: _getDisplayName(_currentUser!),
-                        radius: 18,
+                        radius: 15, // Slightly reduced
                         backgroundColor: Colors.white,
                       ),
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      _getDisplayName(_currentUser!).split(' ').first,
+                      _getDisplayName(_currentUser!).isNotEmpty
+                          ? _getDisplayName(_currentUser!)
+                          : 'U',
                       style: const TextStyle(
-                        fontSize: 18,
+                        fontSize: 16, // Slightly reduced
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
                       ),

@@ -53,6 +53,6 @@
 | 12 | Oshipay      | Loy           |          |
 | 13 | Nehemia      | Mwajombe      |malume1738| NIT/BIT/2023/2140
 | 14 | Isack M.     | Sebastian     |isacksebastian|NIT/BIT/2023/2379
-| 15 | Joyce        | Msinga        |          |
-| 16 | Jueria       | Makweta       |          |
+| 15 | Joyce        | Msinga        |joycegodfrey226|NIT/BIT/2022/1781
+| 16 | Jueria       | Makweta       |Juecry|NIT/BOT/2022/1854
 |

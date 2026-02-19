@@ -44,7 +44,7 @@
 | 3  | Rajabu       | Mohamedi      |          |
 | 4  | Pascal       | Mboya         |          |
 | 5  | Said         | Athuman       |          |
-| 6  | Bahati       | Msafiri       |          |
+| 6  | Bahati       | Msafiri       |Bahatimsafiri|NIT/BIT/2023/2276
 | 7  | Barikieli    | Manase        | barikieli| NIT/BIT/2023/2213
 | 8  | Waziri       | Fadhili       | WaziriG  |NIT/BIT/2023/2161
 | 9  | Lubigisa     | William       |          |
